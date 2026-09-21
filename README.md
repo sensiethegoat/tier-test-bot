@@ -54,9 +54,9 @@ The quick way is one command per gamemode:
 ```
 
 This creates everything:
-- **Channels:** a **🏆 Tier Testing** category with `#request-test` (with the panel), `#results`, a testers-only `#test-logs` and one `#<region>-queue` per region.
+- **Channels:** a **🏆 Tier Testing** category with `#request-test` (with the panel), `#results`, a testers-only `#test-logs`, a high-testers-only `#high-tests` and one `#<region>-queue` per region.
 - **Tickets:** a private **⚔️ Test Tickets** category.
-- **Roles:** a **Tester** role, one **Waitlist** role per region, and colored tier roles for the gamemode.
+- **Roles:** **Tester** and **High Tester** roles, one **Waitlist** role per region, and colored tier roles for the gamemode.
 
 It's safe to run again. It only creates what's missing, keeps a gamemode's regions if you leave out `regions`, and adds new gamemodes next to existing ones.
 
@@ -74,6 +74,22 @@ To set things up by hand instead:
 
 The bot's role must be above the waitlist and tier roles so it can assign them. `/setup config nickname_sync:True` also renames players to `[best tier] IGN` (off by default).
 
+### High testing
+
+Like MCTiers, regular testers can only rank players up to a cap (**HT3** by default). The tiers above it need a **high test** run by high testers. `/autosetup` turns this on. To set it up by hand:
+
+```
+/setup config high_test_channel:#high-tests high_tester_role:@High Tester high_test_cap:HT3
+```
+
+1. **Capped regular tests:** the Finish Test menu only offers tiers up to the cap, and `/result` refuses anything higher.
+2. **Requesting:** players at the cap or above press **Request High Test** on the panel (or run `/hightest request`). Reaching the cap in a regular test earns the request right away, without waiting out the regular cooldown.
+3. **The request:** it appears in the high-test channel with **Accept** and **Deny** and pings the High Tester role.
+4. **Accept:** opens a private `high-<ign>` ticket that high testers can see, and takes the player out of that gamemode's regular queue. Any tier can be given. The result is marked as a high test in Discord and on the website, and the normal cooldown follows.
+5. **Deny:** takes an optional reason and DMs it to the player. They can ask again after 24 hours. Players can withdraw a request with `/hightest cancel`.
+
+`/hightest pending` lists waiting requests for high testers. `/setup config disable_high_testing:True` turns the feature off and removes the cap. Servers that never set it up have no cap.
+
 ### Tier testing commands
 
 | Command | Who | What |
@@ -81,6 +97,8 @@ The bot's role must be above the waitlist and tier roles so it can assign them. 
 | `/autosetup gamemode [regions]` | Admin | Create the channels, roles, queues and panel for a gamemode |
 | `/setup config · gamemode add/remove · queue · panel · tierroles · view` | Admin | Server configuration |
 | `/queue open · leave · close · next · remove` | Tester | Run a region queue |
+| `/hightest request · cancel` | Player | Ask for (or withdraw) a high test |
+| `/hightest pending` | High tester | List waiting high test requests |
 | `/result tier [score] [notes]` | Assigned tester / admin | Record the result and close the ticket (or use the **Finish Test** button) |
 | `/close [reason]` | Assigned tester / admin | Close the ticket without a result (or **Cancel Test**) |
 | `/ticket add · spectate · remove · rename` | Assigned tester / admin | Manage who is in the ticket |

@@ -110,7 +110,7 @@ function historyTable(site, rows, { showPlayer }) {
   return `<table><thead><tr>${showPlayer ? '<th>Player</th>' : ''}<th>Gamemode</th><th>Result</th><th>Score</th><th class="hide-sm">Region</th><th>Date</th></tr></thead><tbody>${rows
     .map(
       (r) => `<tr>${showPlayer ? `<td><a class="who" href="${url(site.slug, 'player', r.ign)}">${headImg(r.head, 24)}<span>${esc(r.ign)}</span></a></td>` : ''}
-      <td>${esc(r.gamemode)}</td><td><a href="${url(site.slug, 'results', r.id)}">${tier(r.previousTier === 'Unranked' ? null : r.previousTier)} → ${tier(r.tier)}</a></td>
+      <td>${esc(r.gamemode)}${r.highTest ? ' <span class="muted">· high</span>' : ''}</td><td><a href="${url(site.slug, 'results', r.id)}">${tier(r.previousTier === 'Unranked' ? null : r.previousTier)} → ${tier(r.tier)}</a></td>
       <td>${esc(r.score ?? '—')}</td><td class="hide-sm">${esc(r.region)}</td><td>${date(r.testedAt)}</td></tr>`,
     )
     .join('')}</tbody></table>`;
@@ -147,7 +147,7 @@ export const resultPage = (site, r) =>
     site,
     active: 'results',
     body: `<div class="profile">${headImg(r.head, 72)}<div><h1><a href="${url(site.slug, 'player', r.ign)}">${esc(r.ign)}</a></h1>
-      <div class="muted">${esc(r.gamemode)} test · ${esc(r.region)} · ${date(r.testedAt)}</div></div></div>
+      <div class="muted">${esc(r.gamemode)} ${r.highTest ? 'high test' : 'test'} · ${esc(r.region)} · ${date(r.testedAt)}</div></div></div>
       <div class="grid"><div class="card"><div class="muted">Previous</div>${tier(r.previousTier === 'Unranked' ? null : r.previousTier)}</div>
       <div class="card"><div class="muted">Earned</div>${tier(r.tier)}</div>
       <div class="card"><div class="muted">Score</div><strong>${esc(r.score ?? '—')}</strong></div></div>`,

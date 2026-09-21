@@ -2,6 +2,7 @@ import './schema.js';
 import { run } from '../../db.js';
 import admin from './commands/admin.js';
 import autosetup from './commands/autosetup.js';
+import hightest from './commands/hightest.js';
 import queue from './commands/queue.js';
 import setup from './commands/setup.js';
 import stats from './commands/stats.js';
@@ -14,9 +15,9 @@ export default {
   id: 'testing',
   name: 'Tier Testing',
   description: 'MCTiers-style verification, waitlists, regional queues, test tickets, results and leaderboards.',
-  commands: [...autosetup, ...setup, ...queue, ...ticket, ...stats, ...admin],
+  commands: [...autosetup, ...setup, ...queue, ...hightest, ...ticket, ...stats, ...admin],
   // Custom-ID scopes (the part before the first ":") that belong to this module.
-  componentScopes: ['panel', 'verify', 'queue', 'ticket'],
+  componentScopes: ['panel', 'verify', 'queue', 'ticket', 'high'],
   handleComponent,
 
   async autocomplete(interaction) {

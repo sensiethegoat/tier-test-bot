@@ -6,7 +6,7 @@ const FORMAT = 'tier-test-bot-backup';
 const VERSION = 1;
 const MAX_BYTES = 10 * 1024 * 1024;
 // Live state (open tickets, queue spots) and the developer's bug reports are never backed up.
-const SKIP = new Set(['bug_reports', 'tickets', 'support_tickets', 'queue_entries', 'queue_testers']);
+const SKIP = new Set(['bug_reports', 'tickets', 'support_tickets', 'queue_entries', 'queue_testers', 'high_requests']);
 
 /** Every table with a guild_id column, and its columns. Found at runtime so new modules are included. */
 function guildTables() {

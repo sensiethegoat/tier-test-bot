@@ -4,7 +4,7 @@ import { resultLink } from '../../links.js';
 import { COLORS, UserError } from '../../util.js';
 import { TIERS, bestTier } from './constants.js';
 import { finishClose, markClosed } from './tickets.js';
-import { applyTierRole, avatarUrl, displayName, getConfig, getPlayer, getRank, syncNickname } from './util.js';
+import { allowedTiers, applyTierRole, avatarUrl, displayName, getConfig, getPlayer, getRank, syncNickname } from './util.js';
 
 /** "3-1", "3 - 1" → "3-1". Empty → null. */
 export function normalizeScore(input) {
@@ -26,6 +26,9 @@ export async function recordResult(interaction, ticket, { tier, score, notes }) 
   notes = notes?.trim() || null;
 
   const cfg = getConfig(guildId);
+  if (!allowedTiers(cfg, ticket).includes(tier)) {
+    throw new UserError(`Regular tests go up to **${cfg.high_cap}**. Higher tiers need a high test (\`/hightest request\`).`);
+  }
   const player = getPlayer(guildId, ticket.user_id);
   if (!player) throw new UserError('The player unlinked their account; cancel this ticket instead.');
   const prev = getRank(guildId, ticket.user_id, ticket.gamemode);
@@ -40,9 +43,9 @@ export async function recordResult(interaction, ticket, { tier, score, notes }) 
       guildId, ticket.user_id, ticket.gamemode, tier, bestTier(prev?.peak_tier, tier), now,
     );
     return run(
-      `INSERT INTO tests (guild_id, user_id, tester_id, gamemode, region, ign, prev_tier, new_tier, score, notes, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      guildId, ticket.user_id, user.id, ticket.gamemode, ticket.region, player.ign, prev?.tier ?? null, tier, score, notes, now,
+      `INSERT INTO tests (guild_id, user_id, tester_id, gamemode, region, ign, prev_tier, new_tier, score, notes, created_at, high)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      guildId, ticket.user_id, user.id, ticket.gamemode, ticket.region, player.ign, prev?.tier ?? null, tier, score, notes, now, ticket.high ? 1 : 0,
     ).lastInsertRowid;
   })();
 
@@ -54,7 +57,7 @@ export async function recordResult(interaction, ticket, { tier, score, notes }) 
 
   const embed = new EmbedBuilder()
     .setColor(COLORS.gold)
-    .setTitle(`${player.ign}'s Test Results 🏆`)
+    .setTitle(`${player.ign}'s ${ticket.high ? 'High Test' : 'Test'} Results 🏆`)
     .setThumbnail(avatarUrl(player))
     .addFields(
       { name: 'Tester', value: `<@${user.id}>` },

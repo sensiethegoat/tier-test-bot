@@ -6,9 +6,9 @@ import {
   TextInputStyle,
 } from 'discord.js';
 import { EPHEMERAL, UserError } from '../../util.js';
-import { TIERS } from './constants.js';
 import { recordResult } from './results.js';
 import { closeTicket, requireTicket } from './tickets.js';
+import { allowedTiers, getConfig } from './util.js';
 
 // Finish Test → pick a tier → form for score and notes → result saved.
 // Cancel Test → ticket closed without a result or cooldown.
@@ -19,7 +19,7 @@ export async function handleTicketComponent(interaction, action, arg) {
     const select = new StringSelectMenuBuilder()
       .setCustomId('ticket:tier')
       .setPlaceholder('Tier earned')
-      .addOptions(TIERS.map((t) => ({ label: t, value: t })));
+      .addOptions(allowedTiers(getConfig(interaction.guildId), ticket).map((t) => ({ label: t, value: t })));
     return interaction.reply({
       ...EPHEMERAL,
       content: `Which tier did <@${ticket.user_id}> earn in **${ticket.gamemode}**?`,

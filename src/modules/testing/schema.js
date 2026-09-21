@@ -126,6 +126,23 @@ CREATE TABLE IF NOT EXISTS restrictions (
 );
 `);
 
+// High test requests wait in the high-test channel until a high tester accepts or denies them.
+db.exec(`
+CREATE TABLE IF NOT EXISTS high_requests (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  guild_id   TEXT NOT NULL,
+  user_id    TEXT NOT NULL,
+  gamemode   TEXT NOT NULL,
+  status     TEXT NOT NULL DEFAULT 'pending',
+  message_id TEXT,
+  handled_by TEXT,
+  reason     TEXT,
+  created_at INTEGER NOT NULL,
+  handled_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS high_requests_user ON high_requests (guild_id, user_id, gamemode, status);
+`);
+
 // Columns added after the first release; CREATE TABLE IF NOT EXISTS won't add them to old databases.
 const hasColumn = (table, col) => db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === col);
 if (!hasColumn('guild_config', 'account_mode')) {
@@ -133,4 +150,11 @@ if (!hasColumn('guild_config', 'account_mode')) {
 }
 if (!hasColumn('tests', 'score')) db.exec('ALTER TABLE tests ADD COLUMN score TEXT');
 if (!hasColumn('guild_config', 'nick_sync')) db.exec('ALTER TABLE guild_config ADD COLUMN nick_sync INTEGER NOT NULL DEFAULT 0');
+if (!hasColumn('guild_config', 'high_tester_role_id')) {
+  db.exec('ALTER TABLE guild_config ADD COLUMN high_tester_role_id TEXT');
+  db.exec('ALTER TABLE guild_config ADD COLUMN high_channel_id TEXT');
+  db.exec("ALTER TABLE guild_config ADD COLUMN high_cap TEXT NOT NULL DEFAULT 'HT3'");
+}
+if (!hasColumn('tickets', 'high')) db.exec('ALTER TABLE tickets ADD COLUMN high INTEGER NOT NULL DEFAULT 0');
+if (!hasColumn('tests', 'high')) db.exec('ALTER TABLE tests ADD COLUMN high INTEGER NOT NULL DEFAULT 0');
 if (!hasColumn('players', 'cracked')) db.exec('ALTER TABLE players ADD COLUMN cracked INTEGER NOT NULL DEFAULT 0');

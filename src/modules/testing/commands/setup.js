@@ -32,6 +32,17 @@ const data = new SlashCommandBuilder()
       .addIntegerOption((o) =>
         o.setName('max_queue').setDescription('Max players per queue (default 20)').setMinValue(1).setMaxValue(50),
       )
+      .addRoleOption((o) => o.setName('high_tester_role').setDescription('Role that runs high tests'))
+      .addChannelOption((o) =>
+        o.setName('high_test_channel').setDescription('Where high test requests appear (turns high testing on)').addChannelTypes(...TEXT_CHANNELS),
+      )
+      .addStringOption((o) =>
+        o
+          .setName('high_test_cap')
+          .setDescription('Best tier a regular test can give; higher needs a high test (default HT3)')
+          .addChoices(...['HT4', 'LT3', 'HT3', 'LT2', 'HT2'].map((t) => ({ name: t, value: t }))),
+      )
+      .addBooleanOption((o) => o.setName('disable_high_testing').setDescription('Turn high testing off (removes the cap)'))
       .addBooleanOption((o) => o.setName('nickname_sync').setDescription('Rename players to "[best tier] IGN" (default off)'))
       .addStringOption((o) =>
         o
@@ -117,11 +128,15 @@ async function execute(interaction) {
       max_queue: options.getInteger('max_queue'),
       account_mode: options.getString('accounts'),
       nick_sync: options.getBoolean('nickname_sync') === null ? null : Number(options.getBoolean('nickname_sync')),
+      high_tester_role_id: options.getRole('high_tester_role')?.id,
+      high_channel_id: options.getChannel('high_test_channel')?.id,
+      high_cap: options.getString('high_test_cap'),
     };
     getConfig(guildId);
     for (const [col, value] of Object.entries(updates)) {
       if (value !== undefined && value !== null) run(`UPDATE guild_config SET ${col} = ? WHERE guild_id = ?`, value, guildId);
     }
+    if (options.getBoolean('disable_high_testing')) run('UPDATE guild_config SET high_channel_id = NULL WHERE guild_id = ?', guildId);
     return interaction.reply({ ...EPHEMERAL, embeds: [configEmbed(interaction)] });
   }
 
@@ -189,6 +204,12 @@ function configEmbed(interaction) {
       { name: 'Max queue', value: String(cfg.max_queue), inline: true },
       { name: 'Accounts', value: ACCOUNT_MODES[cfg.account_mode], inline: true },
       { name: 'Nickname sync', value: cfg.nick_sync ? 'On' : 'Off', inline: true },
+      {
+        name: 'High testing',
+        value: cfg.high_channel_id
+          ? `On · cap ${cfg.high_cap} · requests in <#${cfg.high_channel_id}> · ${cfg.high_tester_role_id ? `<@&${cfg.high_tester_role_id}>` : 'admins only (no role set)'}`
+          : 'Off',
+      },
       { name: 'Gamemodes', value: gamemodes(guildId).join(', ') || '*none — `/setup gamemode add`*' },
       {
         name: 'Queues',

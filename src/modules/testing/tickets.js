@@ -14,7 +14,7 @@ const MEMBER_PERMS = [
 
 export const getTicket = (channelId) => one('SELECT * FROM tickets WHERE channel_id = ?', channelId);
 
-export async function createTicket(guild, cfg, { member, testerId, gamemode, region }) {
+export async function createTicket(guild, cfg, { member, testerId, gamemode, region, high = false }) {
   const player = getPlayer(guild.id, member.id);
   const rank = getRank(guild.id, member.id, gamemode);
 
@@ -24,9 +24,11 @@ export async function createTicket(guild, cfg, { member, testerId, gamemode, reg
     { id: member.id, allow: MEMBER_PERMS },
     { id: testerId, allow: MEMBER_PERMS },
   ];
-  if (cfg.tester_role_id) overwrites.push({ id: cfg.tester_role_id, allow: MEMBER_PERMS });
+  // High tests are seen by high testers; regular tests by regular testers.
+  const staffRole = high ? cfg.high_tester_role_id : cfg.tester_role_id;
+  if (staffRole) overwrites.push({ id: staffRole, allow: MEMBER_PERMS });
 
-  const name = `test-${player.ign}`.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+  const name = `${high ? 'high' : 'test'}-${player.ign}`.toLowerCase().replace(/[^a-z0-9_-]/g, '');
   const parent = cfg.ticket_category_id && guild.channels.cache.has(cfg.ticket_category_id) ? cfg.ticket_category_id : null;
 
   let channel;
@@ -38,13 +40,13 @@ export async function createTicket(guild, cfg, { member, testerId, gamemode, reg
   }
 
   run(
-    'INSERT INTO tickets (channel_id, guild_id, user_id, tester_id, gamemode, region, opened_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    channel.id, guild.id, member.id, testerId, gamemode, region, Date.now(),
+    'INSERT INTO tickets (channel_id, guild_id, user_id, tester_id, gamemode, region, opened_at, high) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    channel.id, guild.id, member.id, testerId, gamemode, region, Date.now(), high ? 1 : 0,
   );
 
   const embed = new EmbedBuilder()
-    .setColor(COLORS.primary)
-    .setTitle(`${gamemode} Tier Test · ${player.ign}`)
+    .setColor(high ? COLORS.gold : COLORS.primary)
+    .setTitle(`${gamemode} ${high ? 'High Test' : 'Tier Test'} · ${player.ign}`)
     .setThumbnail(avatarUrl(player))
     .setDescription(
       'Agree on a server and start when you are both ready.\n' +
@@ -77,7 +79,7 @@ export async function createTicket(guild, cfg, { member, testerId, gamemode, reg
     cfg,
     new EmbedBuilder()
       .setColor(COLORS.primary)
-      .setTitle('Ticket opened')
+      .setTitle(high ? 'High test opened' : 'Ticket opened')
       .setDescription(`${channel} · <@${member.id}> (${displayName(player)}) with <@${testerId}> · ${gamemode} ${region}`)
       .setTimestamp(),
   );

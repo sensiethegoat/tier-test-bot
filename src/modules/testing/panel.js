@@ -23,6 +23,7 @@ import {
   requireVerified,
 } from './util.js';
 import { COLORS, EPHEMERAL, UserError, ts } from '../../util.js';
+import { highEnabled } from './util.js';
 
 // Waitlist/status handlers run after the router has deferred, so they return the reply payload.
 
@@ -45,6 +46,9 @@ export function panelView(gamemode, cfg) {
         '',
         'When you reach the front, a tester opens a private ticket with you.',
         `You can be tested once every **${cfg.cooldown_days} days** per gamemode.`,
+        ...(highEnabled(cfg)
+          ? ['', `**At ${cfg.high_cap} or above?** Press **Request High Test** to be tested for the tiers above ${cfg.high_cap}.`]
+          : []),
       ].join('\n'),
     );
   const row = new ActionRowBuilder().addComponents(
@@ -53,6 +57,11 @@ export function panelView(gamemode, cfg) {
     new ButtonBuilder().setCustomId(`panel:leave:${gamemode}`).setLabel('Leave Waitlist').setStyle(ButtonStyle.Danger),
     new ButtonBuilder().setCustomId(`panel:status:${gamemode}`).setLabel('My Status').setStyle(ButtonStyle.Secondary),
   );
+  if (highEnabled(cfg)) {
+    row.addComponents(
+      new ButtonBuilder().setCustomId(`panel:high:${gamemode}`).setLabel('Request High Test').setEmoji('⭐').setStyle(ButtonStyle.Secondary),
+    );
+  }
   return { embeds: [embed], components: [row] };
 }
 

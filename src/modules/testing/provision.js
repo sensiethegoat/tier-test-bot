@@ -81,9 +81,18 @@ export async function autosetup(guild, gamemode, regions) {
   const results = await findOrCreateChannel(guild, { id: cfg.results_channel_id, name: 'results', parent: category, overwrites: readOnly });
   const logs = await findOrCreateChannel(guild, { id: cfg.log_channel_id, name: 'test-logs', parent: category, overwrites: staffOnly });
 
+  const highTester = await findOrCreateRole(guild, cfg.high_tester_role_id, 'High Tester');
+  const high = await findOrCreateChannel(guild, {
+    id: cfg.high_channel_id,
+    name: 'high-tests',
+    parent: category,
+    overwrites: [{ id: everyone, deny: [view] }, { id: highTester.id, allow: [view] }, botAllow],
+  });
+
   run(
-    `UPDATE guild_config SET tester_role_id = ?, ticket_category_id = ?, results_channel_id = ?, log_channel_id = ? WHERE guild_id = ?`,
-    tester.id, tickets.id, results.id, logs.id, guild.id,
+    `UPDATE guild_config SET tester_role_id = ?, ticket_category_id = ?, results_channel_id = ?, log_channel_id = ?,
+       high_tester_role_id = ?, high_channel_id = ? WHERE guild_id = ?`,
+    tester.id, tickets.id, results.id, logs.id, highTester.id, high.id, guild.id,
   );
 
   const queues = [];
@@ -110,7 +119,7 @@ export async function autosetup(guild, gamemode, regions) {
   );
   if (!hasPanel) await request.send(panelView(gamemode, getConfig(guild.id)));
 
-  return { category, tickets, request, results, logs, tester, queues, tierRoles, postedPanel: !hasPanel };
+  return { category, tickets, request, results, logs, high, tester, highTester, queues, tierRoles, postedPanel: !hasPanel };
 }
 
 export const ALL_REGIONS = Object.keys(REGIONS);

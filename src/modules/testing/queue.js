@@ -1,7 +1,7 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
 import { all, db, one, run } from '../../db.js';
 import { createTicket } from './tickets.js';
-import { assertCanTest, getConfig, requireTester, requireVerified } from './util.js';
+import { assertCanTest, getConfig, openTicketFor, requireTester, requireVerified } from './util.js';
 import { COLORS, UserError } from '../../util.js';
 
 export const getQueue = (guildId, gamemode, region) =>
@@ -162,6 +162,7 @@ export async function nextPlayer(interaction, gamemode, region) {
   let entry, member;
   while ((entry = queueEntries(guildId, gamemode, region)[0])) {
     run('DELETE FROM queue_entries WHERE guild_id = ? AND gamemode = ? AND user_id = ?', guildId, gamemode, entry.user_id);
+    if (openTicketFor(guildId, entry.user_id)) continue; // already being tested (e.g. a high test)
     member = await guild.members.fetch(entry.user_id).catch(() => null);
     if (member) break;
   }

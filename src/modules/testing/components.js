@@ -1,5 +1,6 @@
 import { enterWaitlist, leaveWaitlist, selectRegion, showStatus, showVerifyModal, startVerify, submitVerifyModal } from './panel.js';
 import { joinQueue, leaveQueue, nextPlayer } from './queue.js';
+import { handleHighComponent, requestHighTest } from './highTest.js';
 import { handleTicketComponent } from './ticketButtons.js';
 import { resolveGamemode } from './util.js';
 import { EPHEMERAL } from '../../util.js';
@@ -14,13 +15,15 @@ export async function handleComponent(interaction) {
   if (scope === 'verify' && action === 'modal') return submitVerifyModal(interaction, rawGamemode ?? 'premium');
   if (scope === 'verify' && action === 'region') return selectRegion(interaction);
   if (scope === 'ticket') return handleTicketComponent(interaction, action, rawGamemode);
+  // For high:* the third part is a request id.
+  if (scope === 'high') return handleHighComponent(interaction, action, rawGamemode);
 
   // Everything below may touch roles or edit the queue message, so defer to stay inside the 3s window.
   await interaction.deferReply(EPHEMERAL);
   const gamemode = resolveGamemode(interaction.guildId, rawGamemode);
 
   if (scope === 'panel') {
-    const handler = { waitlist: enterWaitlist, leave: leaveWaitlist, status: showStatus }[action];
+    const handler = { waitlist: enterWaitlist, leave: leaveWaitlist, status: showStatus, high: requestHighTest }[action];
     if (handler) return interaction.editReply(await handler(interaction, gamemode));
   }
 

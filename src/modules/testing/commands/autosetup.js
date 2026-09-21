@@ -3,7 +3,7 @@ import { all } from '../../../db.js';
 import { COLORS, EPHEMERAL, UserError } from '../../../util.js';
 import { GAMEMODE_RE } from '../constants.js';
 import { ALL_REGIONS, autosetup } from '../provision.js';
-import { gamemodes } from '../util.js';
+import { gamemodes, getConfig } from '../util.js';
 
 const data = new SlashCommandBuilder()
   .setName('autosetup')
@@ -51,9 +51,9 @@ async function execute(interaction) {
       [
         `**Panel:** ${r.request}${r.postedPanel ? '' : ' (already there)'}`,
         `**Queues:** ${r.queues.map((q) => `${q.channel} → ${q.waitlist}`).join(' · ')}`,
-        `**Results:** ${r.results} · **Logs:** ${r.logs} (testers only)`,
+        `**Results:** ${r.results} · **Logs:** ${r.logs} (testers only) · **High tests:** ${r.high} (${r.highTester} only)`,
         `**Tickets category:** ${r.tickets.name}`,
-        `**Tester role:** ${r.tester}${r.tierRoles.length ? ` · created ${r.tierRoles.length} tier roles` : ''}`,
+        `**Tester roles:** ${r.tester} (up to ${getConfig(guild.id).high_cap}), ${r.highTester} (high tests)${r.tierRoles.length ? ` · created ${r.tierRoles.length} tier roles` : ''}`,
         '',
         `Next: give ${r.tester} to your testers. Make sure my role is above the waitlist and tier roles in Server Settings → Roles.`,
         'Run this again with another gamemode to add it next to this one.',

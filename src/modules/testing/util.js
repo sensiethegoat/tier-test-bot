@@ -20,6 +20,16 @@ export function resolveGamemode(guildId, input) {
 export const isTester = (member, cfg) =>
   isAdmin(member) || Boolean(cfg.tester_role_id && member.roles.cache.has(cfg.tester_role_id));
 
+/** High testing is on once a server sets a high-test channel. Until then regular tests have no cap. */
+export const highEnabled = (cfg) => Boolean(cfg.high_channel_id);
+
+export const isHighTester = (member, cfg) =>
+  isAdmin(member) || Boolean(cfg.high_tester_role_id && member.roles.cache.has(cfg.high_tester_role_id));
+
+/** Tiers a ticket's result may give: everything in a high test, up to the cap in a regular one. */
+export const allowedTiers = (cfg, ticket) =>
+  ticket.high || !highEnabled(cfg) ? TIERS : TIERS.filter((t) => tierIndex(t) >= tierIndex(cfg.high_cap));
+
 export function requireTester(interaction) {
   const cfg = getConfig(interaction.guildId);
   if (!isTester(interaction.member, cfg)) throw new UserError('Only testers can do that.');
@@ -60,13 +70,13 @@ export function activeRestriction(guildId, userId) {
 }
 
 /** Throws if the player is restricted, on cooldown, or already in a ticket. */
-export function assertCanTest(guildId, userId, gamemode, cfg) {
+export function assertCanTest(guildId, userId, gamemode, cfg, { ignoreCooldown = false } = {}) {
   const r = activeRestriction(guildId, userId);
   if (r) {
     const until = r.until ? ` until ${ts(r.until, 'f')}` : '';
     throw new UserError(`You are restricted from testing${until}.${r.reason ? ` Reason: ${r.reason}` : ''}`);
   }
-  const cd = cooldownEnds(guildId, userId, gamemode, cfg);
+  const cd = !ignoreCooldown && cooldownEnds(guildId, userId, gamemode, cfg);
   if (cd) throw new UserError(`You were tested in **${gamemode}** recently. You can test again ${ts(cd)}.`);
   if (openTicketFor(guildId, userId)) throw new UserError('You already have an open test ticket.');
 }

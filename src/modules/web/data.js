@@ -52,7 +52,7 @@ export function player(guildId, ign) {
   const ranks = all('SELECT gamemode, tier, peak_tier FROM ranks WHERE guild_id = ? AND user_id = ?', guildId, p.user_id);
   const points = ranks.reduce((sum, r) => sum + POINTS[r.peak_tier], 0);
   const history = all(
-    `SELECT id, gamemode, region, prev_tier, new_tier, score, created_at FROM tests
+    `SELECT id, gamemode, region, prev_tier, new_tier, score, high, created_at FROM tests
      WHERE guild_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT 50`,
     guildId, p.user_id,
   );
@@ -68,7 +68,7 @@ export function player(guildId, ign) {
   };
 }
 
-const RESULT_SQL = `SELECT t.id, t.ign, t.gamemode, t.region, t.prev_tier, t.new_tier, t.score, t.created_at, p.uuid, p.cracked
+const RESULT_SQL = `SELECT t.id, t.ign, t.gamemode, t.region, t.prev_tier, t.new_tier, t.score, t.high, t.created_at, p.uuid, p.cracked
   FROM tests t LEFT JOIN players p ON p.guild_id = t.guild_id AND p.user_id = t.user_id`;
 
 const publicResult = (r) => ({
@@ -79,6 +79,7 @@ const publicResult = (r) => ({
   previousTier: r.prev_tier ?? 'Unranked',
   tier: r.new_tier,
   score: r.score,
+  highTest: Boolean(r.high),
   testedAt: new Date(r.created_at).toISOString(),
 });
 
