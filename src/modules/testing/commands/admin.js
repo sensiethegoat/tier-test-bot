@@ -2,7 +2,7 @@ import { InteractionContextType, PermissionFlagsBits, SlashCommandBuilder } from
 import { DAY, bestTier } from '../constants.js';
 import { run } from '../../../db.js';
 import { removeEverywhere } from '../queue.js';
-import { applyTierRole, gamemodeOption, getRank, resolveGamemode, tierOption } from '../util.js';
+import { applyTierRole, gamemodeOption, getRank, resolveGamemode, syncNickname, tierOption } from '../util.js';
 import { EPHEMERAL, UserError } from '../../../util.js';
 
 const data = new SlashCommandBuilder()
@@ -60,7 +60,10 @@ async function execute(interaction) {
 
     if (tier === 'Unranked') {
       run('DELETE FROM ranks WHERE guild_id = ? AND user_id = ? AND gamemode = ?', guildId, target.id, gm);
-      if (member) await applyTierRole(member, gm, null);
+      if (member) {
+        await applyTierRole(member, gm, null);
+        await syncNickname(member);
+      }
       return interaction.editReply(`${target} is now **Unranked** in ${gm}.`);
     }
 
@@ -71,7 +74,10 @@ async function execute(interaction) {
        ON CONFLICT (guild_id, user_id, gamemode) DO UPDATE SET tier = excluded.tier, peak_tier = excluded.peak_tier`,
       guildId, target.id, gm, tier, peak,
     );
-    if (member) await applyTierRole(member, gm, tier);
+    if (member) {
+      await applyTierRole(member, gm, tier);
+      await syncNickname(member);
+    }
     return interaction.editReply(`${target} is now **${tier}** in ${gm} (peak ${peak}).`);
   }
 

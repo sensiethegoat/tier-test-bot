@@ -131,4 +131,6 @@ const hasColumn = (table, col) => db.prepare(`PRAGMA table_info(${table})`).all(
 if (!hasColumn('guild_config', 'account_mode')) {
   db.exec("ALTER TABLE guild_config ADD COLUMN account_mode TEXT NOT NULL DEFAULT 'premium'");
 }
+if (!hasColumn('tests', 'score')) db.exec('ALTER TABLE tests ADD COLUMN score TEXT');
+if (!hasColumn('guild_config', 'nick_sync')) db.exec('ALTER TABLE guild_config ADD COLUMN nick_sync INTEGER NOT NULL DEFAULT 0');
 if (!hasColumn('players', 'cracked')) db.exec('ALTER TABLE players ADD COLUMN cracked INTEGER NOT NULL DEFAULT 0');

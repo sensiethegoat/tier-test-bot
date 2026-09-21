@@ -1,68 +1,27 @@
-import { EmbedBuilder, InteractionContextType, SlashCommandBuilder } from 'discord.js';
-import { bestTier } from '../constants.js';
-import { db, run } from '../../../db.js';
+import { InteractionContextType, SlashCommandBuilder } from 'discord.js';
+import { recordResult } from '../results.js';
 import { closeTicket, requireTicket } from '../tickets.js';
-import { applyTierRole, avatarUrl, displayName, getConfig, getPlayer, getRank, tierOption } from '../util.js';
-import { COLORS, EPHEMERAL, UserError } from '../../../util.js';
+import { tierOption } from '../util.js';
+import { EPHEMERAL, UserError } from '../../../util.js';
 
 const result = new SlashCommandBuilder()
   .setName('result')
   .setDescription('Submit the result of this test and close the ticket')
   .setContexts(InteractionContextType.Guild)
   .addStringOption((o) => tierOption(o))
+  .addStringOption((o) => o.setName('score').setDescription('Match score, e.g. 3-1').setMaxLength(7))
   .addStringOption((o) => o.setName('notes').setDescription('Optional notes for the log').setMaxLength(500));
 
 async function executeResult(interaction) {
   const ticket = requireTicket(interaction);
-  const { guild, guildId, options, user } = interaction;
-  const tier = options.getString('tier', true);
-  const notes = options.getString('notes');
+  const { options } = interaction;
   await interaction.deferReply();
-
-  const cfg = getConfig(guildId);
-  const player = getPlayer(guildId, ticket.user_id);
-  if (!player) throw new UserError('The player unlinked their account; close this ticket with `/close`.');
-  const prev = getRank(guildId, ticket.user_id, ticket.gamemode);
-  const now = Date.now();
-
-  db.transaction(() => {
-    run(
-      `INSERT INTO ranks (guild_id, user_id, gamemode, tier, peak_tier, last_tested_at) VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT (guild_id, user_id, gamemode) DO UPDATE SET
-         tier = excluded.tier, peak_tier = excluded.peak_tier, last_tested_at = excluded.last_tested_at`,
-      guildId, ticket.user_id, ticket.gamemode, tier, bestTier(prev?.peak_tier, tier), now,
-    );
-    run(
-      `INSERT INTO tests (guild_id, user_id, tester_id, gamemode, region, ign, prev_tier, new_tier, notes, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      guildId, ticket.user_id, user.id, ticket.gamemode, ticket.region, player.ign, prev?.tier ?? null, tier, notes, now,
-    );
-  })();
-
-  const member = await guild.members.fetch(ticket.user_id).catch(() => null);
-  if (member) await applyTierRole(member, ticket.gamemode, tier);
-
-  const embed = new EmbedBuilder()
-    .setColor(COLORS.gold)
-    .setTitle(`${player.ign}'s Test Results 🏆`)
-    .setThumbnail(avatarUrl(player))
-    .addFields(
-      { name: 'Tester', value: `<@${user.id}>` },
-      { name: 'Region', value: ticket.region },
-      { name: 'Username', value: displayName(player) },
-      { name: 'Previous Rank', value: prev?.tier ?? 'Unranked' },
-      { name: 'Rank Earned', value: tier },
-    )
-    .setFooter({ text: ticket.gamemode })
-    .setTimestamp();
-
-  const results = cfg.results_channel_id && (await guild.channels.fetch(cfg.results_channel_id).catch(() => null));
-  await results
-    ?.send({ content: `<@${ticket.user_id}>`, embeds: [embed], allowedMentions: { users: [ticket.user_id] } })
-    .catch(() => {});
-
+  const { embed } = await recordResult(interaction, ticket, {
+    tier: options.getString('tier', true),
+    score: options.getString('score'),
+    notes: options.getString('notes'),
+  });
   await interaction.editReply({ content: 'Result saved. This ticket closes in 10 seconds.', embeds: [embed] });
-  await closeTicket(interaction.channel, ticket, user.id, `Result: ${tier}${notes ? ` — ${notes}` : ''}`);
 }
 
 const close = new SlashCommandBuilder()

@@ -15,7 +15,7 @@ export default {
   description: 'MCTiers-style verification, waitlists, regional queues, test tickets, results and leaderboards.',
   commands: [...setup, ...queue, ...ticket, ...stats, ...admin],
   // Custom-ID scopes (the part before the first ":") that belong to this module.
-  componentScopes: ['panel', 'verify', 'queue'],
+  componentScopes: ['panel', 'verify', 'queue', 'ticket'],
   handleComponent,
 
   async autocomplete(interaction) {

@@ -31,6 +31,7 @@ const data = new SlashCommandBuilder()
       .addIntegerOption((o) =>
         o.setName('max_queue').setDescription('Max players per queue (default 20)').setMinValue(1).setMaxValue(50),
       )
+      .addBooleanOption((o) => o.setName('nickname_sync').setDescription('Rename players to "[best tier] IGN" (default off)'))
       .addStringOption((o) =>
         o
           .setName('accounts')
@@ -114,6 +115,7 @@ async function execute(interaction) {
       cooldown_days: options.getInteger('cooldown_days'),
       max_queue: options.getInteger('max_queue'),
       account_mode: options.getString('accounts'),
+      nick_sync: options.getBoolean('nickname_sync') === null ? null : Number(options.getBoolean('nickname_sync')),
     };
     getConfig(guildId);
     for (const [col, value] of Object.entries(updates)) {
@@ -196,6 +198,7 @@ function configEmbed(interaction) {
       { name: 'Cooldown', value: `${cfg.cooldown_days} days`, inline: true },
       { name: 'Max queue', value: String(cfg.max_queue), inline: true },
       { name: 'Accounts', value: ACCOUNT_MODES[cfg.account_mode], inline: true },
+      { name: 'Nickname sync', value: cfg.nick_sync ? 'On' : 'Off', inline: true },
       { name: 'Gamemodes', value: gamemodes(guildId).join(', ') || '*none — `/setup gamemode add`*' },
       {
         name: 'Queues',

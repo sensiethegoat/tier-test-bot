@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { DAY, REGIONS, TIERS, USERNAME_RE } from './constants.js';
+import { DAY, REGIONS, TIERS, USERNAME_RE, tierIndex } from './constants.js';
 import { all, one, run } from '../../db.js';
 import { UserError, isAdmin, ts } from '../../util.js';
 
@@ -123,6 +123,18 @@ export async function applyTierRole(member, gamemode, tier) {
   const add = roles.find((r) => r.tier === tier)?.role_id;
   if (remove.length) await member.roles.remove(remove).catch(() => {});
   if (add) await member.roles.add(add).catch(() => {});
+}
+
+/** With nickname sync on, renames the member to "[best current tier] IGN". */
+export async function syncNickname(member) {
+  const cfg = getConfig(member.guild.id);
+  const player = getPlayer(member.guild.id, member.id);
+  if (!cfg.nick_sync || !player || !member.manageable) return;
+  const best = all('SELECT tier FROM ranks WHERE guild_id = ? AND user_id = ?', member.guild.id, member.id)
+    .map((r) => r.tier)
+    .sort((a, b) => tierIndex(a) - tierIndex(b))[0];
+  const nick = (best ? `[${best}] ${player.ign}` : player.ign).slice(0, 32);
+  if (member.nickname !== nick) await member.setNickname(nick, 'Tier nickname sync').catch(() => {});
 }
 
 // Shared slash-command option builders.

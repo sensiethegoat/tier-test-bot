@@ -1,5 +1,6 @@
 import { enterWaitlist, leaveWaitlist, selectRegion, showStatus, showVerifyModal, startVerify, submitVerifyModal } from './panel.js';
 import { joinQueue, leaveQueue, nextPlayer } from './queue.js';
+import { handleTicketComponent } from './ticketButtons.js';
 import { resolveGamemode } from './util.js';
 import { EPHEMERAL } from '../../util.js';
 
@@ -12,6 +13,7 @@ export async function handleComponent(interaction) {
   if (scope === 'verify' && action === 'type') return showVerifyModal(interaction, rawGamemode);
   if (scope === 'verify' && action === 'modal') return submitVerifyModal(interaction, rawGamemode ?? 'premium');
   if (scope === 'verify' && action === 'region') return selectRegion(interaction);
+  if (scope === 'ticket') return handleTicketComponent(interaction, action, rawGamemode);
 
   // Everything below may touch roles or edit the queue message, so defer to stay inside the 3s window.
   await interaction.deferReply(EPHEMERAL);

@@ -1,4 +1,4 @@
-import { ChannelType, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
 import { TICKET_DELETE_DELAY } from './constants.js';
 import { all, one, run } from '../../db.js';
 import { avatarUrl, displayName, getConfig, getPlayer, getRank, sendLog } from './util.js';
@@ -48,7 +48,7 @@ export async function createTicket(guild, cfg, { member, testerId, gamemode, reg
     .setThumbnail(avatarUrl(player))
     .setDescription(
       'Agree on a server and start when you are both ready.\n' +
-        'Testers: finish with `/result`, or `/close` if the test did not happen.',
+        'Testers: press **Finish Test** (or `/result`) when done, or **Cancel Test** (or `/close`) if it did not happen.',
     )
     .addFields(
       { name: 'Player', value: `<@${member.id}>`, inline: true },
@@ -61,9 +61,14 @@ export async function createTicket(guild, cfg, { member, testerId, gamemode, reg
       { name: 'Preferred Server', value: player.server || 'Not specified' },
     );
 
+  const buttons = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('ticket:finish').setLabel('Finish Test').setEmoji('✅').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId('ticket:cancel').setLabel('Cancel Test').setEmoji('✖️').setStyle(ButtonStyle.Secondary),
+  );
   await channel.send({
     content: `<@${member.id}> <@${testerId}>`,
     embeds: [embed],
+    components: [buttons],
     allowedMentions: { users: [member.id, testerId] },
   });
 
@@ -89,9 +94,17 @@ export function requireTicket(interaction) {
   return ticket;
 }
 
-export async function closeTicket(channel, ticket, closedBy, reason) {
-  run('UPDATE tickets SET closed_at = ? WHERE channel_id = ?', Date.now(), ticket.channel_id);
+/** Marks a ticket closed. Returns false if it was already closed, so it can only happen once. */
+export const markClosed = (channelId) =>
+  run('UPDATE tickets SET closed_at = ? WHERE channel_id = ? AND closed_at IS NULL', Date.now(), channelId).changes === 1;
 
+export async function closeTicket(channel, ticket, closedBy, reason) {
+  if (!markClosed(ticket.channel_id)) throw new UserError('This ticket is already closed.');
+  await finishClose(channel, ticket, closedBy, reason);
+}
+
+/** Logs a closed ticket and deletes its channel shortly after. */
+export async function finishClose(channel, ticket, closedBy, reason) {
   await sendLog(
     channel.guild,
     getConfig(channel.guild.id),
