@@ -12,6 +12,10 @@ db.pragma('journal_mode = WAL');
 db.pragma('busy_timeout = 5000');
 
 db.exec(`
+CREATE TABLE IF NOT EXISTS bot_meta (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS guild_modules (
   guild_id TEXT NOT NULL,
   module   TEXT NOT NULL,

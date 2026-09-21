@@ -1,5 +1,6 @@
 import './env.js';
 import { Client, Events, GatewayIntentBits } from 'discord.js';
+import { deployCommands } from './core/deploy.js';
 import { modules } from './modules.js';
 import { handleInteraction } from './router.js';
 
@@ -22,8 +23,21 @@ async function runEvent(name, ...args) {
 
 client.once(Events.ClientReady, async (c) => {
   console.log(`Logged in as ${c.user.tag} · ${c.guilds.cache.size} servers · modules: ${modules.map((m) => m.id).join(', ')}`);
+  await autoDeploy(c);
   await runEvent('ready', c);
 });
+
+// Slash commands register themselves on startup whenever they change. With sharding only
+// shard 0 does it. Set AUTO_DEPLOY=false to manage them yourself with `npm run deploy`.
+async function autoDeploy(c) {
+  if (process.env.AUTO_DEPLOY === 'false' || (c.shard && !c.shard.ids.includes(0))) return;
+  try {
+    const { changed, count, target } = await deployCommands({ token: c.token, applicationId: c.application.id });
+    console.log(changed ? `Registered ${count} slash commands ${target}.` : 'Slash commands are up to date.');
+  } catch (err) {
+    console.error('Registering slash commands failed:', err.message);
+  }
+}
 
 client.on(Events.GuildCreate, (guild) => console.log(`Joined ${guild.name} (${guild.id})`));
 // Data is kept when the bot is removed, so re-inviting it restores the server's setup.

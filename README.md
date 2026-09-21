@@ -14,8 +14,8 @@ Every server that adds the bot gets its own isolated data: its own settings, gam
 1. Create an application at https://discord.com/developers/applications, add a bot, and copy the token and application ID. No privileged intents are needed unless you turn on support ticket transcripts (see [Community module](#community-module)).
 2. Install **Node.js 22 or newer** (on hosting panels, pick a Node 22 Docker image). `cp .env.example .env` and fill it in.
 3. `npm install`
-4. `npm run deploy` registers the slash commands. Without `DEV_GUILD_ID` they are global and can take up to an hour to appear the first time.
-5. `npm start`, or `npm run shard` once the bot is in more than 2,500 servers.
+4. `npm start`. The bot registers its slash commands on startup whenever they change, so there is no separate deploy step. Without `DEV_GUILD_ID` they are global and can take up to an hour to appear the first time. `npm run deploy` forces a re-register without starting the bot.
+5. Use `npm run shard` instead of `npm start` once the bot is in more than 2,500 servers.
 
 Invite link (Manage Roles, Manage Channels, View Channels, Send Messages, Embed Links, Attach Files, Read Message History, Mention Everyone):
 
@@ -29,7 +29,7 @@ Server admins manage modules with `/modules list`, `/modules enable <module>` an
 
 - **When a module is off on a server:** its commands and buttons refuse to run there, and its data is kept.
 - **Hiding the commands:** Discord still lists them in the menu. To hide them too, use Server Settings → Integrations → the bot.
-- **Removing a module for every server:** set `DISABLED_MODULES=community` (comma-separated) in `.env`, then run `npm run deploy` again. The module's commands are then never registered.
+- **Removing a module for every server:** set `DISABLED_MODULES=community` (comma-separated) in `.env` and restart the bot. Its commands are then removed from Discord.
 
 ## Tier Testing module
 
