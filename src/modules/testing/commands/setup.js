@@ -1,7 +1,8 @@
 import { ChannelType, EmbedBuilder, InteractionContextType, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
-import { ACCOUNT_MODES, GAMEMODE_RE, TIERS } from '../constants.js';
+import { ACCOUNT_MODES, GAMEMODE_RE } from '../constants.js';
 import { all, db, one, run } from '../../../db.js';
 import { panelView } from '../panel.js';
+import { ensureTierRoles } from '../provision.js';
 import { refreshQueue } from '../queue.js';
 import { gamemodeOption, gamemodes, getConfig, regionOption, resolveGamemode } from '../util.js';
 import { COLORS, EPHEMERAL, UserError } from '../../../util.js';
@@ -159,18 +160,7 @@ async function execute(interaction) {
   if (sub === 'tierroles') {
     const gm = resolveGamemode(guildId, options.getString('gamemode', true));
     await interaction.deferReply(EPHEMERAL);
-    const existing = new Map(
-      all('SELECT tier, role_id FROM tier_roles WHERE guild_id = ? AND gamemode = ?', guildId, gm).map((r) => [r.tier, r.role_id]),
-    );
-    const created = [];
-    // Create worst → best so HT1 ends up highest in the role list.
-    for (const tier of [...TIERS].reverse()) {
-      if (existing.has(tier) && guild.roles.cache.has(existing.get(tier))) continue;
-      const role = await guild.roles.create({ name: `${gm} ${tier}`, reason: 'Tier roles for testing bot' }).catch(() => null);
-      if (!role) throw new UserError('I could not create roles. Give me **Manage Roles**.');
-      run('INSERT OR REPLACE INTO tier_roles VALUES (?, ?, ?, ?)', guildId, gm, tier, role.id);
-      created.push(role);
-    }
+    const created = await ensureTierRoles(guild, gm);
     return interaction.editReply(
       created.length ? `Created ${created.length} roles: ${created.map(String).join(' ')}` : 'All tier roles already exist.',
     );
