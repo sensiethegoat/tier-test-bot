@@ -1,6 +1,7 @@
 import { one, run } from './db.js';
 import community from './modules/community/index.js';
 import testing from './modules/testing/index.js';
+import web from './modules/web/index.js';
 
 /*
  * A module is a plain object:
@@ -15,7 +16,7 @@ import testing from './modules/testing/index.js';
  * Server admins switch modules on or off with /modules. The bot host can remove a module
  * everywhere with DISABLED_MODULES in .env; its commands are then not registered at all.
  */
-export const allModules = [testing, community];
+export const allModules = [testing, community, web];
 
 const globallyOff = new Set(
   (process.env.DISABLED_MODULES ?? '')

@@ -86,7 +86,9 @@ async function importBackup(interaction) {
   // Only known tables and columns are written, and every row is forced to this server's guild_id,
   // so a hand-edited file can't reach other servers' data.
   let imported = 0;
-  const tables = guildTables().filter((t) => Array.isArray(backup.tables[t.name]));
+  // A website address belongs to the server that published it, so it doesn't travel to other servers.
+  const sameServer = backup.guildId === guild.id;
+  const tables = guildTables().filter((t) => Array.isArray(backup.tables[t.name]) && (sameServer || t.name !== 'web_config'));
   try {
     db.transaction(() => {
       for (const t of tables) {

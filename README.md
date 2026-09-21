@@ -6,6 +6,7 @@ An open-source, multi-server Discord bot (discord.js v14) for Minecraft PvP comm
 |---|---|
 | **Tier Testing** (`testing`) | MCTiers-style testing: verify → waitlist → live regional queue → private test ticket → result + cooldown, with leaderboards and tester stats |
 | **Community** (`community`) | Announcements (`/announce`) and support tickets (`/support`) |
+| **Website** (`web`) | Public leaderboard, player pages, results and a JSON API. Private until an admin runs `/website publish` |
 
 Every server that adds the bot gets its own isolated data: its own settings, gamemodes, queues, roles, players, results and tickets. Nothing is shared between servers.
 
@@ -40,11 +41,26 @@ Server admins manage modules with `/modules list`, `/modules enable <module>` an
 3. A tester runs `/queue open`. The live queue message turns green and the waitlist role is pinged.
 4. Waitlisted players press **Join Queue**. The embed lists the available testers and the queue order.
 5. The tester presses **Next Player** (or runs `/queue next`). The bot opens a private `test-<ign>` ticket for the player and tester, showing the player's current and peak tier and their preferred server.
-6. The tester runs `/result <tier>`. The bot saves the result, updates the tier role, posts a results embed, starts the cooldown and deletes the ticket 10 seconds later. `/close` ends a ticket with no result and no cooldown.
+6. The tester presses **Finish Test** (picks the tier, then enters an optional score like `3-1` and notes), or runs `/result <tier> [score]`. The bot saves the result, updates the tier role, posts a results embed, starts the cooldown and deletes the ticket 10 seconds later. **Cancel Test** or `/close` ends a ticket with no result and no cooldown.
 
 Tiers go HT1 > LT1 > HT2 > … > LT5. Points follow MCTiers (HT1 60, LT1 45, HT2 30, LT2 20, HT3 10, LT3 6, HT4 4, LT4 3, HT5 2, LT5 1) and are counted from each gamemode's **peak** tier. Players get titles from Rookie to Combat Grandmaster.
 
 ### Configure tier testing (admins, needs Manage Server)
+
+The quick way is one command per gamemode:
+
+```
+/autosetup gamemode:Sword regions:EU,NA
+```
+
+This creates everything:
+- **Channels:** a **🏆 Tier Testing** category with `#request-test` (with the panel), `#results`, a testers-only `#test-logs` and one `#<region>-queue` per region.
+- **Tickets:** a private **⚔️ Test Tickets** category.
+- **Roles:** a **Tester** role, one **Waitlist** role per region, and colored tier roles for the gamemode.
+
+It's safe to run again. It only creates what's missing, keeps a gamemode's regions if you leave out `regions`, and adds new gamemodes next to existing ones.
+
+To set things up by hand instead:
 
 ```
 /setup gamemode add name:Sword
@@ -56,21 +72,22 @@ Tiers go HT1 > LT1 > HT2 > … > LT5. Points follow MCTiers (HT1 60, LT1 45, HT2
 /setup view                            (check config and missing bot permissions)
 ```
 
-The bot's role must be above the waitlist and tier roles so it can assign them.
+The bot's role must be above the waitlist and tier roles so it can assign them. `/setup config nickname_sync:True` also renames players to `[best tier] IGN` (off by default).
 
 ### Tier testing commands
 
 | Command | Who | What |
 |---|---|---|
+| `/autosetup gamemode [regions]` | Admin | Create the channels, roles, queues and panel for a gamemode |
 | `/setup config · gamemode add/remove · queue · panel · tierroles · view` | Admin | Server configuration |
 | `/queue open · leave · close · next · remove` | Tester | Run a region queue |
-| `/result tier [notes]` | Assigned tester / admin | Record the result and close the ticket |
-| `/close [reason]` | Assigned tester / admin | Close the ticket without a result |
+| `/result tier [score] [notes]` | Assigned tester / admin | Record the result and close the ticket (or use the **Finish Test** button) |
+| `/close [reason]` | Assigned tester / admin | Close the ticket without a result (or **Cancel Test**) |
 | `/ticket add · spectate · remove · rename` | Assigned tester / admin | Manage who is in the ticket |
 | `/profile [user]` | Everyone | Tiers, peak, points, title, cooldowns |
 | `/leaderboard [gamemode]` | Everyone | Overall points or per-gamemode ranking |
 | `/tester stats [user] [days] · top [days]` | Everyone | Tester activity, e.g. for quotas |
-| `/admin settier · resetcooldown · restrict · unrestrict · unlink` | Admin | Staff tools |
+| `/admin settier · resetcooldown · restrict · unrestrict · unlink · transfer` | Admin | Staff tools. `transfer` moves an account, tiers, history and restrictions to another Discord account |
 
 Testers are members with the configured tester role. Anyone with Manage Server also counts as a tester.
 
@@ -120,6 +137,22 @@ Cracked (offline-mode) accounts aren't registered with Mojang, so they can't be 
 | `/support claim · add · remove` | Staff | Manage a ticket |
 | `/support close [reason]` | Staff / ticket owner | Close a ticket |
 
+## Website module
+
+Each server can publish a public tierlist site. It is private by default.
+
+```
+/website publish slug:swordtiers     → https://your-host/swordtiers
+/website link [user]                 → buttons to the leaderboard, results or a player's page
+/website unpublish                   → take it offline again
+```
+
+- **Pages:** an overall leaderboard (points and titles) and one per gamemode, filterable by region. There are also player pages with tiers, peaks and test history, a recent-results page, and a page for each result. Result embeds in Discord get a **View on website** button.
+- **JSON API:** `/api/<slug>/leaderboard?mode=Sword&region=EU`, `/api/<slug>/players/<ign>`, `/api/<slug>/results` and `/api/<slug>/results/<id>`.
+- **What's public:** only Minecraft names, regions, tiers, scores and dates. Discord accounts, tester identities and staff notes never appear.
+- **Hosting:** the bot host sets `WEB_BASE_URL` (the public address) and opens a port. The site listens on `WEB_PORT`, then `SERVER_PORT` (set automatically on Pterodactyl hosts such as Wispbyte), then `PORT`, defaulting to 3000.
+- **Built-in protection:** the site uses Node's built-in web server with no extra dependencies. It only allows reading, sends strict security headers, escapes everything it shows, and rate-limits each IP. Set `TRUST_PROXY=true` only behind your own reverse proxy.
+
 ## Core commands
 
 These are always available and don't belong to a module.
@@ -128,7 +161,17 @@ These are always available and don't belong to a module.
 |---|---|---|
 | `/about` | Everyone | Version, server count, license and a link to the source code |
 | `/modules list · enable · disable` | Admin | Turn modules on or off for this server |
+| `/backup export · import` | Administrator | Download or restore this server's data as JSON |
 | `/bugreport [screenshot]` | Everyone | Send a bug report to the bot developer |
+
+### Backups
+
+`/backup export` sends an administrator a JSON file with this server's data from every module. `/backup import` replaces this server's data with such a file.
+
+- **Scope:** only this server's data. Every imported row is forced to this server, and only known tables and columns are written, so a file can never reach another server.
+- **Safety:** the import runs in one transaction. A broken file changes nothing.
+- **What's left out:** open tickets and queue spots aren't included, and queues come back closed.
+- **Moving to another server:** set `from_other_server:True`. Channels, roles and the website address then need to be set up again in the new server.
 
 ### Bug reports
 
@@ -154,10 +197,12 @@ src/
   router.js         sends commands/buttons to their module; refuses disabled modules
   modules.js        module registry, per-server on/off
   commands.js       all slash commands (core + enabled modules)
-  core/             always-on commands: /modules, /bugreport
+  links.js          lets modules link to each other without importing each other
+  core/             always-on commands: /about, /backup, /bugreport, /modules; command registration
   modules/
-    testing/        Tier Testing module (schema, queue, tickets, panel, commands/)
+    testing/        Tier Testing module (schema, queue, tickets, results, panel, provision, commands/)
     community/      Community module (schema, announce, support)
+    web/            Website module (schema, data, pages, server, /website)
   db.js · util.js   shared SQLite connection and helpers
 ```
 
