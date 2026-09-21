@@ -12,7 +12,7 @@ Every server that adds the bot gets its own isolated data: its own settings, gam
 ## Running the bot
 
 1. Create an application at https://discord.com/developers/applications, add a bot, and copy the token and application ID. No privileged intents are needed unless you turn on support ticket transcripts (see [Community module](#community-module)).
-2. `cp .env.example .env` and fill it in.
+2. Install **Node.js 22 or newer** (on hosting panels, pick a Node 22 Docker image). `cp .env.example .env` and fill it in.
 3. `npm install`
 4. `npm run deploy` registers the slash commands. Without `DEV_GUILD_ID` they are global and can take up to an hour to appear the first time.
 5. `npm start`, or `npm run shard` once the bot is in more than 2,500 servers.
