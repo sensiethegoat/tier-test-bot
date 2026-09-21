@@ -1,8 +1,17 @@
 import { InteractionContextType, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
 import { DAY, bestTier } from '../constants.js';
-import { run } from '../../../db.js';
+import { all, db, one, run } from '../../../db.js';
 import { removeEverywhere } from '../queue.js';
-import { applyTierRole, gamemodeOption, getRank, resolveGamemode, syncNickname, tierOption } from '../util.js';
+import {
+  applyTierRole,
+  gamemodeOption,
+  getConfig,
+  getRank,
+  openTicketFor,
+  resolveGamemode,
+  syncNickname,
+  tierOption,
+} from '../util.js';
 import { EPHEMERAL, UserError } from '../../../util.js';
 
 const data = new SlashCommandBuilder()
@@ -45,11 +54,19 @@ const data = new SlashCommandBuilder()
       .setName('unlink')
       .setDescription('Unlink a player\'s Minecraft account (their tiers are kept)')
       .addUserOption((o) => o.setName('user').setDescription('Player').setRequired(true)),
+  )
+  .addSubcommand((s) =>
+    s
+      .setName('transfer')
+      .setDescription('Move a player\'s account, tiers and history to another Discord account')
+      .addUserOption((o) => o.setName('from').setDescription('Current owner').setRequired(true))
+      .addUserOption((o) => o.setName('to').setDescription('New owner (must not be verified here yet)').setRequired(true)),
   );
 
 async function execute(interaction) {
   const { client, guild, guildId, options } = interaction;
   const sub = options.getSubcommand();
+  if (sub === 'transfer') return transfer(interaction);
   const target = options.getUser('user', true);
   await interaction.deferReply(EPHEMERAL);
 
@@ -108,6 +125,40 @@ async function execute(interaction) {
     await removeEverywhere(client, guildId, target.id);
     return interaction.editReply(`Unlinked ${target}'s account.`);
   }
+}
+
+async function transfer(interaction) {
+  const { guild, guildId, options } = interaction;
+  const from = options.getUser('from', true);
+  const to = options.getUser('to', true);
+  if (from.id === to.id) throw new UserError('Pick two different accounts.');
+  const has = (table, id) => one(`SELECT 1 FROM ${table} WHERE guild_id = ? AND user_id = ?`, guildId, id);
+  if (!has('players', from.id) && !has('ranks', from.id)) throw new UserError(`${from} has no account or tiers here.`);
+  if (has('players', to.id) || has('ranks', to.id)) throw new UserError(`${to} already has an account or tiers here. Unlink them first.`);
+  for (const id of [from.id, to.id]) {
+    if (has('waitlist', id) || has('queue_entries', id) || openTicketFor(guildId, id)) {
+      throw new UserError(`<@${id}> is on a waitlist, in a queue or in a test. Wait until that's finished.`);
+    }
+  }
+  await interaction.deferReply(EPHEMERAL);
+
+  // Restrictions move too, so a transfer can't be used to escape one.
+  db.transaction(() => {
+    for (const table of ['players', 'ranks', 'tests', 'restrictions']) {
+      run(`UPDATE ${table} SET user_id = ? WHERE guild_id = ? AND user_id = ?`, to.id, guildId, from.id);
+    }
+  })();
+
+  const [oldMember, newMember] = await Promise.all([from, to].map((u) => guild.members.fetch(u.id).catch(() => null)));
+  const ranks = all('SELECT gamemode, tier FROM ranks WHERE guild_id = ? AND user_id = ?', guildId, to.id);
+  for (const r of ranks) {
+    if (oldMember) await applyTierRole(oldMember, r.gamemode, null);
+    if (newMember) await applyTierRole(newMember, r.gamemode, r.tier);
+  }
+  if (newMember) await syncNickname(newMember);
+  if (oldMember?.manageable && getConfig(guildId).nick_sync) await oldMember.setNickname(null).catch(() => {});
+
+  await interaction.editReply(`Moved ${from}'s account, ${ranks.length} tier(s) and test history to ${to}.`);
 }
 
 export default [{ data, execute }];
