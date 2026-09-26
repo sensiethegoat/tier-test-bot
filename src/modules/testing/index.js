@@ -9,7 +9,8 @@ import stats from './commands/stats.js';
 import ticket from './commands/ticket.js';
 import { handleComponent } from './components.js';
 import { sweepClosedTickets } from './tickets.js';
-import { gamemodes } from './util.js';
+import { tiersOf } from './constants.js';
+import { gamemodes, getConfig } from './util.js';
 
 export default {
   id: 'testing',
@@ -22,10 +23,15 @@ export default {
 
   async autocomplete(interaction) {
     const focused = interaction.options.getFocused(true);
-    if (focused.name !== 'gamemode') return interaction.respond([]);
     const query = focused.value.toLowerCase();
-    const matches = gamemodes(interaction.guildId).filter((g) => g.toLowerCase().includes(query));
-    await interaction.respond(matches.slice(0, 25).map((g) => ({ name: g, value: g })));
+    let values = [];
+    if (focused.name === 'gamemode') values = gamemodes(interaction.guildId);
+    // /admin settier can also clear a tier, so it offers Unranked.
+    if (focused.name === 'tier') {
+      values = [...tiersOf(getConfig(interaction.guildId)), ...(interaction.commandName === 'admin' ? ['Unranked'] : [])];
+    }
+    const matches = values.filter((v) => v.toLowerCase().includes(query));
+    await interaction.respond(matches.slice(0, 25).map((v) => ({ name: v, value: v })));
   },
 
   events: {

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { DAY, REGIONS, TIERS, USERNAME_RE, tierIndex } from './constants.js';
+import { DAY, REGIONS, USERNAME_RE, pointsFor, tierIndex, tiersOf } from './constants.js';
 import { all, one, run } from '../../db.js';
 import { UserError, isAdmin, ts } from '../../util.js';
 
@@ -28,7 +28,7 @@ export const isHighTester = (member, cfg) =>
 
 /** Tiers a ticket's result may give: everything in a high test, up to the cap in a regular one. */
 export const allowedTiers = (cfg, ticket) =>
-  ticket.high || !highEnabled(cfg) ? TIERS : TIERS.filter((t) => tierIndex(t) >= tierIndex(cfg.high_cap));
+  ticket.high || !highEnabled(cfg) ? tiersOf(cfg) : tiersOf(cfg).filter((t) => tierIndex(t) >= tierIndex(cfg.high_cap));
 
 export function requireTester(interaction) {
   const cfg = getConfig(interaction.guildId);
@@ -71,6 +71,9 @@ export function activeRestriction(guildId, userId) {
 
 /** Throws if the player is restricted, on cooldown, or already in a ticket. */
 export function assertCanTest(guildId, userId, gamemode, cfg, { ignoreCooldown = false } = {}) {
+  if (getPlayer(guildId, userId)?.retired) {
+    throw new UserError('Your profile is retired here. Ask staff to bring it back before testing again.');
+  }
   const r = activeRestriction(guildId, userId);
   if (r) {
     const until = r.until ? ` until ${ts(r.until, 'f')}` : '';
@@ -147,6 +150,24 @@ export async function syncNickname(member) {
   if (member.nickname !== nick) await member.setNickname(nick, 'Tier nickname sync').catch(() => {});
 }
 
+/** Total points and the overall tier badge, counted from each gamemode's peak tier. */
+export function overallOf(guildId, userId, cfg) {
+  const ranks = all('SELECT gamemode, tier, peak_tier FROM ranks WHERE guild_id = ? AND user_id = ?', guildId, userId);
+  const points = ranks.reduce((sum, r) => sum + pointsFor(cfg, r.peak_tier), 0);
+  return { ranks, points };
+}
+
+/** Where a player sits in a gamemode's ranking (retired players are not counted). */
+export function positionIn(guildId, gamemode, userId) {
+  const rows = all(
+    `SELECT r.user_id, r.tier, r.last_tested_at FROM ranks r JOIN players p ON p.guild_id = r.guild_id AND p.user_id = r.user_id
+     WHERE r.guild_id = ? AND r.gamemode = ? AND p.retired = 0`,
+    guildId, gamemode,
+  ).sort((a, b) => tierIndex(a.tier) - tierIndex(b.tier) || (a.last_tested_at ?? 0) - (b.last_tested_at ?? 0));
+  const index = rows.findIndex((r) => r.user_id === userId);
+  return index === -1 ? null : index + 1;
+}
+
 // Shared slash-command option builders.
 export const gamemodeOption = (o, required = true) =>
   o.setName('gamemode').setDescription('Gamemode').setRequired(required).setAutocomplete(true);
@@ -158,9 +179,5 @@ export const regionOption = (o, required = true) =>
     .setRequired(required)
     .addChoices(...Object.entries(REGIONS).map(([value, name]) => ({ name: `${value} · ${name}`, value })));
 
-export const tierOption = (o, extra = []) =>
-  o
-    .setName('tier')
-    .setDescription('Tier')
-    .setRequired(true)
-    .addChoices(...[...TIERS, ...extra].map((t) => ({ name: t, value: t })));
+// Tiers are autocompleted, not fixed choices, because each server picks 10 or 15 tiers.
+export const tierOption = (o) => o.setName('tier').setDescription('Tier').setRequired(true).setAutocomplete(true);

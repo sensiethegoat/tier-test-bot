@@ -1,15 +1,18 @@
 import { ChannelType, PermissionFlagsBits } from 'discord.js';
 import { all, run } from '../../db.js';
 import { UserError } from '../../util.js';
-import { REGIONS, TIERS } from './constants.js';
+import { REGIONS, tiersOf } from './constants.js';
 import { panelView } from './panel.js';
 import { refreshQueue } from './queue.js';
 import { getConfig } from './util.js';
 
 const REASON = 'Tier testing /autosetup';
 const TIER_COLORS = {
-  HT1: 0xff3b30, LT1: 0xff6b6b, HT2: 0xff9500, LT2: 0xffb84d, HT3: 0xffcc00,
-  LT3: 0xffe066, HT4: 0x34c759, LT4: 0x7bd88f, HT5: 0x0a84ff, LT5: 0x64b5f6,
+  HT1: 0xff3b30, MT1: 0xff5a4d, LT1: 0xff6b6b,
+  HT2: 0xff9500, MT2: 0xffa733, LT2: 0xffb84d,
+  HT3: 0xffcc00, MT3: 0xffd633, LT3: 0xffe066,
+  HT4: 0x34c759, MT4: 0x57d07a, LT4: 0x7bd88f,
+  HT5: 0x0a84ff, MT5: 0x3d9dff, LT5: 0x64b5f6,
 };
 
 /** Creates any missing "<gamemode> <tier>" roles. Returns the roles it created. */
@@ -18,8 +21,8 @@ export async function ensureTierRoles(guild, gamemode) {
     all('SELECT tier, role_id FROM tier_roles WHERE guild_id = ? AND gamemode = ?', guild.id, gamemode).map((r) => [r.tier, r.role_id]),
   );
   const created = [];
-  // Create worst → best so HT1 ends up highest in the role list.
-  for (const tier of [...TIERS].reverse()) {
+  // Create worst → best so the top tier ends up highest in the role list.
+  for (const tier of [...tiersOf(getConfig(guild.id))].reverse()) {
     if (existing.has(tier) && guild.roles.cache.has(existing.get(tier))) continue;
     const role = await guild.roles
       .create({ name: `${gamemode} ${tier}`, colors: { primaryColor: TIER_COLORS[tier] }, reason: REASON })
@@ -59,7 +62,7 @@ export async function autosetup(guild, gamemode, regions) {
   if (!me.permissions.has([PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ManageRoles])) {
     throw new UserError('I need **Manage Channels** and **Manage Roles** to set up the server.');
   }
-  run('INSERT OR IGNORE INTO gamemodes VALUES (?, ?)', guild.id, gamemode);
+  run('INSERT OR IGNORE INTO gamemodes (guild_id, name) VALUES (?, ?)', guild.id, gamemode);
   const cfg = getConfig(guild.id);
   const everyone = guild.roles.everyone.id;
   const view = PermissionFlagsBits.ViewChannel;
@@ -123,3 +126,4 @@ export async function autosetup(guild, gamemode, regions) {
 }
 
 export const ALL_REGIONS = Object.keys(REGIONS);
+export const DEFAULT_REGIONS = ['NA', 'EU', 'AS', 'OC'];

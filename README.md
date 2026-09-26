@@ -43,7 +43,15 @@ Server admins manage modules with `/modules list`, `/modules enable <module>` an
 5. The tester presses **Next Player** (or runs `/queue next`). The bot opens a private `test-<ign>` ticket for the player and tester, showing the player's current and peak tier and their preferred server.
 6. The tester presses **Finish Test** (picks the tier, then enters an optional score like `3-1` and notes), or runs `/result <tier> [score]`. The bot saves the result, updates the tier role, posts a results embed, starts the cooldown and deletes the ticket 10 seconds later. **Cancel Test** or `/close` ends a ticket with no result and no cooldown.
 
-Tiers go HT1 > LT1 > HT2 > … > LT5. Points follow MCTiers (HT1 60, LT1 45, HT2 30, LT2 20, HT3 10, LT3 6, HT4 4, LT4 3, HT5 2, LT5 1) and are counted from each gamemode's **peak** tier. Players get titles from Rookie to Combat Grandmaster.
+### Tiers, points and rankings
+
+- **Tier scale:** 10 tiers (HT1 > LT1 > HT2 … LT5, like MCTiers) by default, or 15 with mid tiers (HT1 > MT1 > LT1 …, like MCPVP) via `/setup config tiers:15`. Switching back to 10 is refused while any tier or peak still uses a mid tier.
+- **Points** come from each gamemode's **peak** tier (10-tier scale: HT1 60, LT1 45, HT2 30, LT2 20, HT3 10, LT3 6, HT4 4, LT4 3, HT5 2, LT5 1).
+- **Overall tier badge:** total points also map to one overall tier, the way MCPVP shows "LT1 · 330 Points", alongside titles from Rookie to Combat Grandmaster.
+- **Position:** `/profile` and the website show where a player sits in each gamemode (#1, #2 …).
+- **Regions:** NA, EU, AS, OC, SA and ME. (Servers that used AU are moved to OC automatically.)
+- **Retired players:** `/admin retire` keeps someone's tiers and peaks but takes them out of the rankings and stops them testing. `/leaderboard include_retired:True` and the website's "Include retired players" link show them again, marked 🏁. Being tested again un-retires a player.
+- **Seasons:** `/admin season end name:"Beta"` archives every current tier, clears the board so everyone starts unranked, and keeps the old standings readable on the website. `/admin season list` shows past seasons.
 
 ### Configure tier testing (admins, needs Manage Server)
 
@@ -63,6 +71,7 @@ It's safe to run again. It only creates what's missing, keeps a gamemode's regio
 To set things up by hand instead:
 
 ```
+/setup gamemode preset preset:mcpvp      (adds Vanilla, Sword, Axe, Pot, NethOP, SMP, UHC and Mace with icons)
 /setup gamemode add name:Sword
 /setup config tester_role:@Tester ticket_category:#Tests results_channel:#results log_channel:#test-logs accounts:Premium only
 /setup queue gamemode:Sword region:EU channel:#eu-queue waitlist_role:@EU Waitlist
@@ -95,7 +104,7 @@ Like MCTiers, regular testers can only rank players up to a cap (**HT3** by defa
 | Command | Who | What |
 |---|---|---|
 | `/autosetup gamemode [regions]` | Admin | Create the channels, roles, queues and panel for a gamemode |
-| `/setup config · gamemode add/remove · queue · panel · tierroles · view` | Admin | Server configuration |
+| `/setup config · gamemode add/remove/icon/preset · queue · panel · tierroles · view` | Admin | Server configuration, gamemode icons and presets |
 | `/queue open · leave · close · next · remove` | Tester | Run a region queue |
 | `/hightest request · cancel` | Player | Ask for (or withdraw) a high test |
 | `/hightest pending` | High tester | List waiting high test requests |
@@ -103,9 +112,9 @@ Like MCTiers, regular testers can only rank players up to a cap (**HT3** by defa
 | `/close [reason]` | Assigned tester / admin | Close the ticket without a result (or **Cancel Test**) |
 | `/ticket add · spectate · remove · rename` | Assigned tester / admin | Manage who is in the ticket |
 | `/profile [user]` | Everyone | Tiers, peak, points, title, cooldowns |
-| `/leaderboard [gamemode]` | Everyone | Overall points or per-gamemode ranking |
+| `/leaderboard [gamemode] [include_retired]` | Everyone | Overall points or per-gamemode ranking |
 | `/tester stats [user] [days] · top [days]` | Everyone | Tester activity, e.g. for quotas |
-| `/admin settier · resetcooldown · restrict · unrestrict · unlink · transfer` | Admin | Staff tools. `transfer` moves an account, tiers, history and restrictions to another Discord account |
+| `/admin settier · resetcooldown · restrict · unrestrict · unlink · transfer · retire · unretire · season end/list` | Admin | Staff tools: fix tiers, move an account to another Discord account, retire players, and end a season |
 
 Testers are members with the configured tester role. Anyone with Manage Server also counts as a tester.
 
@@ -165,8 +174,8 @@ Each server can publish a public tierlist site. It is private by default.
 /website unpublish                   → take it offline again
 ```
 
-- **Pages:** an overall leaderboard (points and titles) and one per gamemode, filterable by region. There are also player pages with tiers, peaks and test history, a recent-results page, and a page for each result. Result embeds in Discord get a **View on website** button.
-- **JSON API:** `/api/<slug>/leaderboard?mode=Sword&region=EU`, `/api/<slug>/players/<ign>`, `/api/<slug>/results` and `/api/<slug>/results/<id>`.
+- **Pages:** an overall leaderboard (overall tier, points and titles) and one per gamemode, filterable by region, with gamemode icons, positions, peaks and past seasons. There are also player pages with tiers, peaks and test history, a recent-results page, and a page for each result. Result embeds in Discord get a **View on website** button.
+- **JSON API:** `/api/<slug>/leaderboard?mode=Sword&region=EU&retired=1`, `/api/<slug>/players/<ign>`, `/api/<slug>/results`, `/api/<slug>/results/<id>`, `/api/<slug>/seasons` and `/api/<slug>/seasons/<id>`.
 - **What's public:** only Minecraft names, regions, tiers, scores and dates. Discord accounts, tester identities and staff notes never appear.
 - **Hosting:** the bot host sets `WEB_BASE_URL` (the public address) and opens a port. The site listens on `WEB_PORT`, then `SERVER_PORT` (set automatically on Pterodactyl hosts such as Wispbyte), then `PORT`, defaulting to 3000.
 - **Built-in protection:** the site uses Node's built-in web server with no extra dependencies. It only allows reading, sends strict security headers, escapes everything it shows, and rate-limits each IP. Set `TRUST_PROXY=true` only behind your own reverse proxy.
@@ -222,6 +231,7 @@ src/
     community/      Community module (schema, announce, support)
     web/            Website module (schema, data, pages, server, /website)
   db.js · util.js   shared SQLite connection and helpers
+tests/              npm test — the bot's code against fake Discord objects
 ```
 
 ### Writing a module
@@ -243,9 +253,17 @@ export default {
 
 Add it to `allModules` in `src/modules.js`. Create its tables in its own `schema.js`, and key every table by `guild_id`.
 
+## Tests
+
+```
+npm test
+```
+
+`tests/` runs the real command, button and website code against fake Discord objects and a temporary database, covering testing, high tests, seasons, retirement, the Community module, backups and the website (including its privacy and security rules). No Discord token is needed.
+
 ## Contributing
 
-Issues and pull requests are welcome. Please keep the existing style: small functions, `UserError` for messages meant for users, and every table keyed by `guild_id`. Try your change on a test server (`DEV_GUILD_ID`) before opening a PR.
+Issues and pull requests are welcome. Please keep the existing style: small functions, `UserError` for messages meant for users, and every table keyed by `guild_id`. Run `npm test`, and try your change on a test server (`DEV_GUILD_ID`) before opening a PR.
 
 ## License
 

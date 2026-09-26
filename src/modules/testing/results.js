@@ -2,7 +2,7 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'disc
 import { db, run } from '../../db.js';
 import { resultLink } from '../../links.js';
 import { COLORS, UserError } from '../../util.js';
-import { TIERS, bestTier } from './constants.js';
+import { bestTier, tiersOf } from './constants.js';
 import { finishClose, markClosed } from './tickets.js';
 import { allowedTiers, applyTierRole, avatarUrl, displayName, getConfig, getPlayer, getRank, syncNickname } from './util.js';
 
@@ -21,11 +21,11 @@ export function normalizeScore(input) {
  */
 export async function recordResult(interaction, ticket, { tier, score, notes }) {
   const { guild, guildId, user } = interaction;
-  if (!TIERS.includes(tier)) throw new UserError('Pick a tier from HT1 to LT5.');
   score = normalizeScore(score);
   notes = notes?.trim() || null;
 
   const cfg = getConfig(guildId);
+  if (!tiersOf(cfg).includes(tier)) throw new UserError(`Pick a tier from ${tiersOf(cfg)[0]} to ${tiersOf(cfg).at(-1)}.`);
   if (!allowedTiers(cfg, ticket).includes(tier)) {
     throw new UserError(`Regular tests go up to **${cfg.high_cap}**. Higher tiers need a high test (\`/hightest request\`).`);
   }
@@ -48,6 +48,9 @@ export async function recordResult(interaction, ticket, { tier, score, notes }) 
       guildId, ticket.user_id, user.id, ticket.gamemode, ticket.region, player.ign, prev?.tier ?? null, tier, score, notes, now, ticket.high ? 1 : 0,
     ).lastInsertRowid;
   })();
+
+  // Being tested brings a retired profile back.
+  run('UPDATE players SET retired = 0, retired_at = NULL WHERE guild_id = ? AND user_id = ? AND retired = 1', guildId, ticket.user_id);
 
   const member = await guild.members.fetch(ticket.user_id).catch(() => null);
   if (member) {

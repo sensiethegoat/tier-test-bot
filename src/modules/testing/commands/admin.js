@@ -1,5 +1,5 @@
 import { InteractionContextType, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
-import { DAY, bestTier } from '../constants.js';
+import { DAY, bestTier, tiersOf } from '../constants.js';
 import { all, db, one, run } from '../../../db.js';
 import { removeEverywhere } from '../queue.js';
 import {
@@ -12,7 +12,7 @@ import {
   syncNickname,
   tierOption,
 } from '../util.js';
-import { EPHEMERAL, UserError } from '../../../util.js';
+import { EPHEMERAL, UserError, ts } from '../../../util.js';
 
 const data = new SlashCommandBuilder()
   .setName('admin')
@@ -57,6 +57,30 @@ const data = new SlashCommandBuilder()
   )
   .addSubcommand((s) =>
     s
+      .setName('retire')
+      .setDescription('Retire a player: they keep their tiers but leave the rankings and cannot test')
+      .addUserOption((o) => o.setName('user').setDescription('Player').setRequired(true)),
+  )
+  .addSubcommand((s) =>
+    s
+      .setName('unretire')
+      .setDescription('Bring a retired player back into the rankings')
+      .addUserOption((o) => o.setName('user').setDescription('Player').setRequired(true)),
+  )
+  .addSubcommandGroup((g) =>
+    g
+      .setName('season')
+      .setDescription('Archive the current tiers and start over')
+      .addSubcommand((s) =>
+        s
+          .setName('end')
+          .setDescription('Save every current tier as a finished season, then clear tiers and cooldowns')
+          .addStringOption((o) => o.setName('name').setDescription('Season name, e.g. "Beta"').setRequired(true).setMaxLength(60)),
+      )
+      .addSubcommand((s) => s.setName('list').setDescription('List finished seasons')),
+  )
+  .addSubcommand((s) =>
+    s
       .setName('transfer')
       .setDescription('Move a player\'s account, tiers and history to another Discord account')
       .addUserOption((o) => o.setName('from').setDescription('Current owner').setRequired(true))
@@ -66,6 +90,7 @@ const data = new SlashCommandBuilder()
 async function execute(interaction) {
   const { client, guild, guildId, options } = interaction;
   const sub = options.getSubcommand();
+  if (options.getSubcommandGroup(false) === 'season') return season(interaction, sub);
   if (sub === 'transfer') return transfer(interaction);
   const target = options.getUser('user', true);
   await interaction.deferReply(EPHEMERAL);
@@ -73,6 +98,10 @@ async function execute(interaction) {
   if (sub === 'settier') {
     const gm = resolveGamemode(guildId, options.getString('gamemode', true));
     const tier = options.getString('tier', true);
+    const cfg = getConfig(guildId);
+    if (tier !== 'Unranked' && !tiersOf(cfg).includes(tier)) {
+      throw new UserError(`This server uses ${tiersOf(cfg).length} tiers: ${tiersOf(cfg)[0]}–${tiersOf(cfg).at(-1)}.`);
+    }
     const member = await guild.members.fetch(target.id).catch(() => null);
 
     if (tier === 'Unranked') {
@@ -119,12 +148,67 @@ async function execute(interaction) {
     return interaction.editReply(`${target} can test again.`);
   }
 
+  if (sub === 'retire' || sub === 'unretire') {
+    const retire = sub === 'retire';
+    const res = run(
+      'UPDATE players SET retired = ?, retired_at = ? WHERE guild_id = ? AND user_id = ? AND retired = ?',
+      retire ? 1 : 0, retire ? Date.now() : null, guildId, target.id, retire ? 0 : 1,
+    );
+    if (!res.changes) throw new UserError(`${target} is ${retire ? 'already retired' : 'not retired'} (or has no account here).`);
+    if (retire) await removeEverywhere(client, guildId, target.id);
+    return interaction.editReply(
+      retire
+        ? `${target} is retired. They keep their tiers and peaks, but leave the leaderboards and can't test until you run \`/admin unretire\`.`
+        : `${target} is back in the rankings.`,
+    );
+  }
+
   if (sub === 'unlink') {
     const res = run('DELETE FROM players WHERE guild_id = ? AND user_id = ?', guildId, target.id);
     if (!res.changes) throw new UserError(`${target} has no linked account.`);
     await removeEverywhere(client, guildId, target.id);
     return interaction.editReply(`Unlinked ${target}'s account.`);
   }
+}
+
+async function season(interaction, sub) {
+  const { guildId, options } = interaction;
+  if (sub === 'list') {
+    const rows = all('SELECT id, name, ended_at FROM seasons WHERE guild_id = ? ORDER BY id DESC LIMIT 25', guildId);
+    return interaction.reply({
+      ...EPHEMERAL,
+      content: rows.length
+        ? rows.map((s) => `**${s.id}. ${s.name}** — ended ${ts(s.ended_at)}`).join('\n')
+        : 'No finished seasons yet. `/admin season end` archives the current tiers and starts a new one.',
+    });
+  }
+
+  const name = options.getString('name', true).trim();
+  const now = Date.now();
+  const counts = db.transaction(() => {
+    const previous = one('SELECT MAX(ended_at) AS at FROM seasons WHERE guild_id = ?', guildId)?.at ?? null;
+    const { lastInsertRowid: id } = run(
+      'INSERT INTO seasons (guild_id, name, started_at, ended_at) VALUES (?, ?, ?, ?)',
+      guildId, name, previous, now,
+    );
+    const archived = run(
+      `INSERT INTO season_ranks (season_id, guild_id, user_id, ign, gamemode, tier, peak_tier)
+       SELECT ?, r.guild_id, r.user_id, p.ign, r.gamemode, r.tier, r.peak_tier
+       FROM ranks r LEFT JOIN players p ON p.guild_id = r.guild_id AND p.user_id = r.user_id
+       WHERE r.guild_id = ?`,
+      id, guildId,
+    ).changes;
+    run('UPDATE tests SET season_id = ? WHERE guild_id = ? AND season_id IS NULL', id, guildId);
+    run('DELETE FROM ranks WHERE guild_id = ?', guildId);
+    return { id, archived };
+  })();
+
+  await interaction.reply({
+    ...EPHEMERAL,
+    content:
+      `🏁 Season **${name}** (#${counts.id}) is archived with ${counts.archived} tier(s). Everyone starts unranked and can test again right away.\n` +
+      'Tier roles are left on members; they are corrected on each player\'s next result, or you can clear them in Server Settings → Roles.',
+  });
 }
 
 async function transfer(interaction) {

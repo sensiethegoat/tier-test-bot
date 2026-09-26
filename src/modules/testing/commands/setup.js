@@ -1,5 +1,5 @@
 import { ChannelType, EmbedBuilder, InteractionContextType, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
-import { ACCOUNT_MODES, GAMEMODE_RE } from '../constants.js';
+import { ACCOUNT_MODES, GAMEMODE_RE, tiersOf } from '../constants.js';
 import { all, db, one, run } from '../../../db.js';
 import { panelView } from '../panel.js';
 import { ensureTierRoles } from '../provision.js';
@@ -8,6 +8,24 @@ import { gamemodeOption, gamemodes, getConfig, regionOption, resolveGamemode } f
 import { COLORS, EPHEMERAL, UserError } from '../../../util.js';
 
 const TEXT_CHANNELS = [ChannelType.GuildText, ChannelType.GuildAnnouncement];
+
+// Ready-made gamemode sets, so a new server can be filled in one command.
+const PRESETS = {
+  mcpvp: {
+    label: 'MCPVP kits',
+    modes: [
+      { name: 'Vanilla', icon: '🍏' }, { name: 'Sword', icon: '⚔️' }, { name: 'Axe', icon: '🪓' }, { name: 'Pot', icon: '🧪' },
+      { name: 'NethOP', icon: '🔥' }, { name: 'SMP', icon: '🛡️' }, { name: 'UHC', icon: '💛' }, { name: 'Mace', icon: '🔨' },
+    ],
+  },
+  crystal: {
+    label: 'Modern kits',
+    modes: [
+      { name: 'Crystal', icon: '💎' }, { name: 'Sword', icon: '⚔️' }, { name: 'Axe', icon: '🪓' }, { name: 'SMP', icon: '🛡️' },
+      { name: 'Mace', icon: '🔨' }, { name: 'Elytra', icon: '🪽' },
+    ],
+  },
+};
 
 const data = new SlashCommandBuilder()
   .setName('setup')
@@ -31,6 +49,12 @@ const data = new SlashCommandBuilder()
       )
       .addIntegerOption((o) =>
         o.setName('max_queue').setDescription('Max players per queue (default 20)').setMinValue(1).setMaxValue(50),
+      )
+      .addIntegerOption((o) =>
+        o
+          .setName('tiers')
+          .setDescription('How many tiers: 10 (HT/LT, MCTiers) or 15 (HT/MT/LT, MCPVP)')
+          .addChoices({ name: '10 · HT1–LT5', value: 10 }, { name: '15 · HT1–LT5 with mid tiers', value: 15 }),
       )
       .addRoleOption((o) => o.setName('high_tester_role').setDescription('Role that runs high tests'))
       .addChannelOption((o) =>
@@ -63,6 +87,25 @@ const data = new SlashCommandBuilder()
       )
       .addSubcommand((s) =>
         s.setName('remove').setDescription('Remove a gamemode and its queues (results are kept)').addStringOption((o) => gamemodeOption(o)),
+      )
+      .addSubcommand((s) =>
+        s
+          .setName('icon')
+          .setDescription('Set the emoji shown next to a gamemode')
+          .addStringOption((o) => gamemodeOption(o))
+          .addStringOption((o) => o.setName('emoji').setDescription('An emoji, or leave empty to clear it').setMaxLength(32)),
+      )
+      .addSubcommand((s) =>
+        s
+          .setName('preset')
+          .setDescription('Add a ready-made set of gamemodes')
+          .addStringOption((o) =>
+            o
+              .setName('preset')
+              .setDescription('Which set to add')
+              .setRequired(true)
+              .addChoices(...Object.entries(PRESETS).map(([value, p]) => ({ name: `${p.label} · ${p.modes.map((m) => m.name).join(', ')}`.slice(0, 100), value }))),
+          ),
       ),
   )
   .addSubcommand((s) =>
@@ -100,10 +143,33 @@ async function execute(interaction) {
     if (!GAMEMODE_RE.test(name)) throw new UserError('Gamemode names can only use letters, numbers and spaces (max 24).');
     if (gamemodes(guildId).some((g) => g.toLowerCase() === name.toLowerCase())) throw new UserError(`**${name}** already exists.`);
     if (gamemodes(guildId).length >= 25) throw new UserError('A server can have at most 25 gamemodes.');
-    run('INSERT INTO gamemodes VALUES (?, ?)', guildId, name);
+    run('INSERT INTO gamemodes (guild_id, name) VALUES (?, ?)', guildId, name);
     return interaction.reply({
       ...EPHEMERAL,
       content: `Added **${name}**. Next: \`/setup queue\` for each region, then \`/setup panel\`.`,
+    });
+  }
+
+  if (group === 'gamemode' && sub === 'icon') {
+    const gm = resolveGamemode(guildId, options.getString('gamemode', true));
+    const emoji = options.getString('emoji')?.trim() || null;
+    run('UPDATE gamemodes SET icon = ? WHERE guild_id = ? AND name = ?', emoji, guildId, gm);
+    return interaction.reply({ ...EPHEMERAL, content: emoji ? `**${gm}** now shows as ${emoji} ${gm}.` : `Removed **${gm}**'s icon.` });
+  }
+
+  if (group === 'gamemode' && sub === 'preset') {
+    const preset = PRESETS[options.getString('preset', true)];
+    const existing = gamemodes(guildId).map((g) => g.toLowerCase());
+    const added = preset.modes.filter((m) => !existing.includes(m.name.toLowerCase()));
+    if (existing.length + added.length > 25) throw new UserError('A server can have at most 25 gamemodes.');
+    db.transaction(() => {
+      for (const m of added) run('INSERT INTO gamemodes (guild_id, name, icon) VALUES (?, ?, ?)', guildId, m.name, m.icon);
+    })();
+    return interaction.reply({
+      ...EPHEMERAL,
+      content: added.length
+        ? `Added ${added.map((m) => `${m.icon} ${m.name}`).join(', ')}. Run \`/autosetup gamemode:<name>\` for each one you want queues and a panel for.`
+        : 'You already have every gamemode from that set.',
     });
   }
 
@@ -131,8 +197,24 @@ async function execute(interaction) {
       high_tester_role_id: options.getRole('high_tester_role')?.id,
       high_channel_id: options.getChannel('high_test_channel')?.id,
       high_cap: options.getString('high_test_cap'),
+      tier_set: options.getInteger('tiers'),
     };
     getConfig(guildId);
+    if (updates.tier_set === 10) {
+      // Dropping the mid tiers would leave stored MT tiers dangling.
+      const mid = one(
+        "SELECT COUNT(*) AS n FROM ranks WHERE guild_id = ? AND (tier LIKE 'MT%' OR peak_tier LIKE 'MT%')",
+        guildId,
+      ).n;
+      if (mid) {
+        throw new UserError(
+          `${mid} player tier(s) or peak(s) use mid tiers. Change those with \`/admin settier\` (with \`set_peak:True\` for peaks) before switching to 10 tiers.`,
+        );
+      }
+    }
+    if (updates.high_cap && updates.tier_set !== 10 && !tiersOf({ tier_set: updates.tier_set ?? getConfig(guildId).tier_set }).includes(updates.high_cap)) {
+      throw new UserError(`${updates.high_cap} is not a tier on this server's scale.`);
+    }
     for (const [col, value] of Object.entries(updates)) {
       if (value !== undefined && value !== null) run(`UPDATE guild_config SET ${col} = ? WHERE guild_id = ?`, value, guildId);
     }
@@ -204,6 +286,7 @@ function configEmbed(interaction) {
       { name: 'Max queue', value: String(cfg.max_queue), inline: true },
       { name: 'Accounts', value: ACCOUNT_MODES[cfg.account_mode], inline: true },
       { name: 'Nickname sync', value: cfg.nick_sync ? 'On' : 'Off', inline: true },
+      { name: 'Tiers', value: `${tiersOf(cfg).length} · ${tiersOf(cfg)[0]}–${tiersOf(cfg).at(-1)}`, inline: true },
       {
         name: 'High testing',
         value: cfg.high_channel_id

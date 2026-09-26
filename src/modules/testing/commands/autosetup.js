@@ -2,7 +2,7 @@ import { EmbedBuilder, InteractionContextType, PermissionFlagsBits, SlashCommand
 import { all } from '../../../db.js';
 import { COLORS, EPHEMERAL, UserError } from '../../../util.js';
 import { GAMEMODE_RE } from '../constants.js';
-import { ALL_REGIONS, autosetup } from '../provision.js';
+import { ALL_REGIONS, DEFAULT_REGIONS, autosetup } from '../provision.js';
 import { gamemodes, getConfig } from '../util.js';
 
 const data = new SlashCommandBuilder()
@@ -14,14 +14,17 @@ const data = new SlashCommandBuilder()
     o.setName('gamemode').setDescription('Existing or new gamemode, e.g. Sword').setRequired(true).setMaxLength(24).setAutocomplete(true),
   )
   .addStringOption((o) =>
-    o.setName('regions').setDescription(`Comma-separated, e.g. EU,NA (default: all, or the existing ones on a re-run)`).setMaxLength(30),
+    o
+      .setName('regions')
+      .setDescription(`Comma-separated from ${ALL_REGIONS.join(', ')} (default: ${DEFAULT_REGIONS.join(',')})`)
+      .setMaxLength(40),
   );
 
 function parseRegions(input, guildId, gamemode) {
   if (!input) {
     // Re-running for a gamemode keeps its regions; a new gamemode gets all of them.
     const existing = all('SELECT region FROM queues WHERE guild_id = ? AND gamemode = ?', guildId, gamemode ?? '').map((r) => r.region);
-    return existing.length ? existing : ALL_REGIONS;
+    return existing.length ? existing : DEFAULT_REGIONS;
   }
   const regions = [...new Set(input.toUpperCase().split(/[\s,]+/).filter(Boolean))];
   const bad = regions.filter((r) => !ALL_REGIONS.includes(r));

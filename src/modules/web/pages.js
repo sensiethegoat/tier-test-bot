@@ -38,15 +38,16 @@ tr:last-child td{border-bottom:0}td.n{width:48px;color:var(--muted);font-variant
 .t-HT4,.t-LT4,.t-HT5,.t-LT5{background:#3b4252;color:#e7e9ee}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin:16px 0}
 .grid .card{padding:12px}.profile{display:flex;gap:16px;align-items:center;margin-bottom:8px}
-.scroll{overflow-x:auto}.empty{padding:24px;text-align:center;color:var(--muted)}
+.retired{font-style:italic;opacity:.75}.scroll{overflow-x:auto}.empty{padding:24px;text-align:center;color:var(--muted)}
 footer{border-top:1px solid var(--line);padding:16px 0;color:var(--muted);font-size:13px}
 @media (max-width:600px){form.search{margin-left:0;width:100%}form.search input{flex:1}.hide-sm{display:none}}
 `;
 
-function layout({ title, site, active, body }) {
+function layout({ title, site, active, body, seasons = 0 }) {
   const nav = site
     ? `<nav><a href="${url(site.slug)}" class="${active === 'board' ? 'on' : ''}">Leaderboard</a>
-       <a href="${url(site.slug, 'results')}" class="${active === 'results' ? 'on' : ''}">Results</a></nav>
+       <a href="${url(site.slug, 'results')}" class="${active === 'results' ? 'on' : ''}">Results</a>
+       ${seasons ? `<a href="${url(site.slug, 'seasons')}" class="${active === 'seasons' ? 'on' : ''}">Seasons</a>` : ''}</nav>
        <form class="search" action="${url(site.slug, 'search')}" method="get" role="search">
          <input name="ign" placeholder="Find a player" maxlength="16" aria-label="Minecraft username"><button>Search</button></form>`
     : '';
@@ -71,74 +72,87 @@ export function landingPage(sites) {
   return layout({ title: 'Tierlists', body: `<h1>Tierlists</h1><p class="muted">Servers that publish their rankings.</p>${list}` });
 }
 
-export function leaderboardPage(site, { modes, mode, region, rows }) {
-  const q = (m, r) => {
+export function leaderboardPage(site, { modes, mode, region, rows, includeRetired, seasons = 0 }) {
+  const q = (m, r, retired = includeRetired) => {
     const params = new URLSearchParams();
     if (m) params.set('mode', m);
     if (r) params.set('region', r);
+    if (retired) params.set('retired', '1');
     const s = params.toString();
     return url(site.slug) + (s ? `?${s}` : '');
   };
-  const tabs = `<div class="tabs">${[['', 'Overall'], ...modes.map((m) => [m, m])]
-    .map(([m, label]) => `<a href="${esc(q(m, region))}" class="${(mode ?? '') === m ? 'on' : ''}">${esc(label)}</a>`)
+  const tabs = `<div class="tabs">${[{ name: '', icon: null, label: 'Overall' }, ...modes.map((m) => ({ ...m, label: m.name }))]
+    .map((m) => `<a href="${esc(q(m.name, region))}" class="${(mode ?? '') === m.name ? 'on' : ''}">${m.icon ? `${esc(m.icon)} ` : ''}${esc(m.label)}</a>`)
     .join('')}</div>
   <div class="tabs">${[['', 'All regions'], ...Object.keys(REGIONS).map((r) => [r, r])]
     .map(([r, label]) => `<a href="${esc(q(mode, r))}" class="${(region ?? '') === r ? 'on' : ''}">${esc(label)}</a>`)
     .join('')}</div>`;
 
-  const who = (r) => `<a class="who" href="${url(site.slug, 'player', r.ign)}">${headImg(r.head)}<span>${esc(r.ign)}${cracked(r)}</span></a>`;
+  const who = (r) =>
+    `<a class="who" href="${url(site.slug, 'player', r.ign)}">${headImg(r.head)}<span class="${r.retired ? 'retired' : ''}">${esc(r.ign)}${cracked(r)}${
+      r.retired ? ' 🏁' : ''
+    }</span></a>`;
   const table = !rows.length
     ? '<div class="empty">Nobody has been tested here yet.</div>'
     : mode
       ? `<table><thead><tr><th>#</th><th>Player</th><th>Tier</th><th class="hide-sm">Peak</th><th class="hide-sm">Region</th></tr></thead><tbody>${rows
           .map((r) => `<tr><td class="n">${r.rank}</td><td>${who(r)}</td><td>${tier(r.tier)}</td><td class="hide-sm">${tier(r.peak)}</td><td class="hide-sm">${esc(r.region)}</td></tr>`)
           .join('')}</tbody></table>`
-      : `<table><thead><tr><th>#</th><th>Player</th><th>Points</th><th class="hide-sm">Title</th><th class="hide-sm">Region</th></tr></thead><tbody>${rows
-          .map((r) => `<tr><td class="n">${r.rank}</td><td>${who(r)}</td><td><strong>${r.points}</strong></td><td class="hide-sm">${esc(r.title)}</td><td class="hide-sm">${esc(r.region)}</td></tr>`)
+      : `<table><thead><tr><th>#</th><th>Player</th><th>Overall</th><th>Points</th><th class="hide-sm">Title</th><th class="hide-sm">Region</th></tr></thead><tbody>${rows
+          .map(
+            (r) => `<tr><td class="n">${r.rank}</td><td>${who(r)}</td><td>${tier(r.overall)}</td><td><strong>${r.points}</strong></td>
+              <td class="hide-sm">${esc(r.title)}</td><td class="hide-sm">${esc(r.region)}</td></tr>`,
+          )
           .join('')}</tbody></table>`;
 
   return layout({
     title: `${mode ?? 'Overall'} · ${site.guild_name}`,
     site,
     active: 'board',
-    body: `<h1>${esc(mode ?? 'Overall')} leaderboard</h1>${tabs}<div class="card scroll">${table}</div>`,
+    seasons,
+    body: `<h1>${esc(mode ?? 'Overall')} leaderboard</h1>${tabs}<div class="card scroll">${table}</div>
+      <p class="muted"><a href="${esc(q(mode, region, !includeRetired))}">${includeRetired ? 'Hide retired players' : 'Include retired players'}</a></p>`,
   });
 }
 
-function historyTable(site, rows, { showPlayer }) {
+function historyTable(site, rows, { showPlayer, icons = new Map() }) {
   if (!rows.length) return '<div class="empty">No tests yet.</div>';
   return `<table><thead><tr>${showPlayer ? '<th>Player</th>' : ''}<th>Gamemode</th><th>Result</th><th>Score</th><th class="hide-sm">Region</th><th>Date</th></tr></thead><tbody>${rows
     .map(
       (r) => `<tr>${showPlayer ? `<td><a class="who" href="${url(site.slug, 'player', r.ign)}">${headImg(r.head, 24)}<span>${esc(r.ign)}</span></a></td>` : ''}
-      <td>${esc(r.gamemode)}${r.highTest ? ' <span class="muted">· high</span>' : ''}</td><td><a href="${url(site.slug, 'results', r.id)}">${tier(r.previousTier === 'Unranked' ? null : r.previousTier)} → ${tier(r.tier)}</a></td>
+      <td>${icons.get(r.gamemode) ? `${esc(icons.get(r.gamemode))} ` : ''}${esc(r.gamemode)}${r.highTest ? ' <span class="muted">· high</span>' : ''}</td><td><a href="${url(site.slug, 'results', r.id)}">${tier(r.previousTier === 'Unranked' ? null : r.previousTier)} → ${tier(r.tier)}</a></td>
       <td>${esc(r.score ?? '—')}</td><td class="hide-sm">${esc(r.region)}</td><td>${date(r.testedAt)}</td></tr>`,
     )
     .join('')}</tbody></table>`;
 }
 
 export function playerPage(site, p, modes) {
-  const all = [...new Set([...modes, ...Object.keys(p.tiers)])];
+  const icons = new Map(modes.map((m) => [m.name, m.icon]));
+  const all = [...new Set([...modes.map((m) => m.name), ...Object.keys(p.tiers)])];
   const cards = all
     .map((m) => {
       const t = p.tiers[m];
-      return `<div class="card"><div class="muted">${esc(m)}</div><div>${tier(t?.tier)}${t && t.peak !== t.tier ? ` <span class="muted">peak</span> ${tier(t.peak)}` : ''}</div></div>`;
+      return `<div class="card"><div class="muted">${icons.get(m) ? `${esc(icons.get(m))} ` : ''}${esc(m)}</div>
+        <div>${tier(t?.tier)}${t?.position ? ` <span class="muted">#${t.position}</span>` : ''}</div>
+        ${t && t.peak !== t.tier ? `<div class="muted">Peak ${esc(t.peak)}</div>` : ''}</div>`;
     })
     .join('');
   return layout({
     title: `${p.ign} · ${site.guild_name}`,
     site,
-    body: `<div class="profile">${headImg(p.head, 72)}<div><h1>${esc(p.ign)}${cracked(p)}</h1>
-      <div class="muted">${esc(p.title)} · ${p.points} points · ${esc(p.region ?? '—')}</div></div></div>
-      <div class="grid">${cards}</div><h2>Test history</h2><div class="card scroll">${historyTable(site, p.history, { showPlayer: false })}</div>`,
+    body: `<div class="profile">${headImg(p.head, 72)}<div><h1 class="${p.retired ? 'retired' : ''}">${esc(p.ign)}${cracked(p)}${p.retired ? ' 🏁' : ''}</h1>
+      <div class="muted">${tier(p.overall)} ${p.points} points · ${esc(p.title)} · ${esc(p.region ?? '—')}${p.retired ? ' · retired' : ''}</div></div></div>
+      <div class="grid">${cards}</div><h2>Test history</h2><div class="card scroll">${historyTable(site, p.history, { showPlayer: false, icons })}</div>`,
   });
 }
 
-export const resultsPage = (site, rows) =>
+export const resultsPage = (site, rows, modes = []) =>
   layout({
     title: `Results · ${site.guild_name}`,
     site,
     active: 'results',
-    body: `<h1>Recent results</h1><p class="muted">The latest ${rows.length} tests.</p><div class="card scroll">${historyTable(site, rows, { showPlayer: true })}</div>`,
+    body: `<h1>Recent results</h1><p class="muted">The latest ${rows.length} tests.</p>
+      <div class="card scroll">${historyTable(site, rows, { showPlayer: true, icons: new Map(modes.map((m) => [m.name, m.icon])) })}</div>`,
   });
 
 export const resultPage = (site, r) =>
@@ -152,6 +166,47 @@ export const resultPage = (site, r) =>
       <div class="card"><div class="muted">Earned</div>${tier(r.tier)}</div>
       <div class="card"><div class="muted">Score</div><strong>${esc(r.score ?? '—')}</strong></div></div>`,
   });
+
+export const seasonsPage = (site, seasons) =>
+  layout({
+    title: `Seasons · ${site.guild_name}`,
+    site,
+    active: 'seasons',
+    seasons: seasons.length,
+    body: `<h1>Seasons</h1><p class="muted">Final standings from earlier seasons.</p>
+      <div class="card">${
+        seasons.length
+          ? `<table><tbody>${seasons
+              .map((s) => `<tr><td><a href="${url(site.slug, 'seasons', s.id)}">${esc(s.name)}</a></td><td class="muted">ended ${date(s.endedAt)}</td></tr>`)
+              .join('')}</tbody></table>`
+          : '<div class="empty">No finished seasons yet.</div>'
+      }</div>`,
+  });
+
+export function seasonPage(site, season, { modes, mode, rows, seasons }) {
+  const q = (m) => url(site.slug, 'seasons', season.id) + (m ? `?mode=${encodeURIComponent(m)}` : '');
+  const tabs = `<div class="tabs">${[{ name: '', label: 'Overall' }, ...modes.map((m) => ({ ...m, label: m.name }))]
+    .map((m) => `<a href="${esc(q(m.name))}" class="${(mode ?? '') === m.name ? 'on' : ''}">${m.icon ? `${esc(m.icon)} ` : ''}${esc(m.label)}</a>`)
+    .join('')}</div>`;
+  const who = (r) => `<a class="who" href="${url(site.slug, 'player', r.ign)}">${headImg(r.head)}<span>${esc(r.ign)}</span></a>`;
+  const table = !rows.length
+    ? '<div class="empty">Nothing was ranked in this season.</div>'
+    : mode
+      ? `<table><thead><tr><th>#</th><th>Player</th><th>Final tier</th><th class="hide-sm">Peak</th></tr></thead><tbody>${rows
+          .map((r) => `<tr><td class="n">${r.rank}</td><td>${who(r)}</td><td>${tier(r.tier)}</td><td class="hide-sm">${tier(r.peak)}</td></tr>`)
+          .join('')}</tbody></table>`
+      : `<table><thead><tr><th>#</th><th>Player</th><th>Overall</th><th>Points</th><th class="hide-sm">Title</th></tr></thead><tbody>${rows
+          .map((r) => `<tr><td class="n">${r.rank}</td><td>${who(r)}</td><td>${tier(r.overall)}</td><td><strong>${r.points}</strong></td><td class="hide-sm">${esc(r.title)}</td></tr>`)
+          .join('')}</tbody></table>`;
+  return layout({
+    title: `${esc(season.name)} · ${site.guild_name}`,
+    site,
+    active: 'seasons',
+    seasons,
+    body: `<h1>${esc(season.name)}</h1><p class="muted">Final standings · ended ${date(new Date(season.ended_at).toISOString())}</p>${tabs}
+      <div class="card scroll">${table}</div><p class="muted"><a href="${url(site.slug, 'seasons')}">All seasons</a></p>`,
+  });
+}
 
 export const errorPage = (status, message, site) =>
   layout({ title: `${status}`, site, body: `<h1>${status}</h1><p class="muted">${esc(message)}</p><p><a href="/">Home</a></p>` });

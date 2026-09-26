@@ -1,7 +1,18 @@
 import http from 'node:http';
 import { REGIONS } from '../testing/constants.js';
-import { gamemodesOf, leaderboard, player, publishedSites, result, results, siteBySlug } from './data.js';
-import { errorPage, landingPage, leaderboardPage, playerPage, resultPage, resultsPage } from './pages.js';
+import {
+  gamemodesOf,
+  leaderboard,
+  player,
+  publishedSites,
+  result,
+  results,
+  seasonLeaderboard,
+  seasonOf,
+  seasonsOf,
+  siteBySlug,
+} from './data.js';
+import { errorPage, landingPage, leaderboardPage, playerPage, resultPage, resultsPage, seasonPage, seasonsPage } from './pages.js';
 
 const HEADERS = {
   'Content-Security-Policy':
@@ -57,10 +68,10 @@ const redirect = (res, location) => {
 function readFilters(site, query) {
   const modes = gamemodesOf(site.guild_id);
   const rawMode = query.get('mode');
-  const mode = rawMode ? modes.find((m) => m.toLowerCase() === rawMode.toLowerCase()) : null;
+  const mode = rawMode ? modes.find((m) => m.name.toLowerCase() === rawMode.toLowerCase())?.name : null;
   const rawRegion = query.get('region')?.toUpperCase();
   const region = rawRegion && rawRegion in REGIONS ? rawRegion : null;
-  return { modes, mode, region, badMode: Boolean(rawMode && !mode) };
+  return { modes, mode, region, includeRetired: query.get('retired') === '1', badMode: Boolean(rawMode && !mode) };
 }
 
 function handle(req, res) {
@@ -89,8 +100,14 @@ function handle(req, res) {
     const [, , kind, arg] = parts;
     if (kind === 'leaderboard' && !arg) {
       const f = readFilters(site, query);
-      if (f.badMode) return json(res, 400, { error: 'Unknown gamemode.', gamemodes: f.modes });
-      return json(res, 200, { server: site.guild_name, gamemode: f.mode ?? 'Overall', region: f.region, players: leaderboard(site.guild_id, f.mode, f.region) });
+      if (f.badMode) return json(res, 400, { error: 'Unknown gamemode.', gamemodes: f.modes.map((m) => m.name) });
+      return json(res, 200, {
+        server: site.guild_name,
+        gamemode: f.mode ?? 'Overall',
+        region: f.region,
+        includeRetired: f.includeRetired,
+        players: leaderboard(site.guild_id, f.mode, f.region, f),
+      });
     }
     if (kind === 'players' && arg) {
       const p = player(site.guild_id, arg);
@@ -104,6 +121,13 @@ function handle(req, res) {
       const r = result(site.guild_id, Number(arg));
       return r ? json(res, 200, r) : json(res, 404, { error: 'Result not found.' });
     }
+    if (kind === 'seasons' && !arg) return json(res, 200, { seasons: seasonsOf(site.guild_id) });
+    if (kind === 'seasons' && /^\d+$/.test(arg)) {
+      const season = seasonOf(site.guild_id, Number(arg));
+      if (!season) return json(res, 404, { error: 'Season not found.' });
+      const f = readFilters(site, query);
+      return json(res, 200, { season: season.name, gamemode: f.mode ?? 'Overall', players: seasonLeaderboard(site.guild_id, season.id, f.mode) });
+    }
     return json(res, 404, { error: 'Unknown endpoint.' });
   }
 
@@ -115,7 +139,16 @@ function handle(req, res) {
   if (!kind) {
     const f = readFilters(site, query);
     if (f.badMode) return html(res, 404, errorPage(404, 'Unknown gamemode.', site));
-    return html(res, 200, leaderboardPage(site, { ...f, rows: leaderboard(site.guild_id, f.mode, f.region) }));
+    return html(res, 200, leaderboardPage(site, { ...f, rows: leaderboard(site.guild_id, f.mode, f.region, f), seasons: seasonsOf(site.guild_id).length }));
+  }
+  if (kind === 'seasons' && !arg) return html(res, 200, seasonsPage(site, seasonsOf(site.guild_id)));
+  if (kind === 'seasons' && /^\d+$/.test(arg)) {
+    const season = seasonOf(site.guild_id, Number(arg));
+    if (!season) return html(res, 404, errorPage(404, 'Season not found.', site));
+    const f = readFilters(site, query);
+    if (f.badMode) return html(res, 404, errorPage(404, 'Unknown gamemode.', site));
+    const seasons = seasonsOf(site.guild_id).length;
+    return html(res, 200, seasonPage(site, season, { modes: f.modes, mode: f.mode, rows: seasonLeaderboard(site.guild_id, season.id, f.mode), seasons }));
   }
   if (kind === 'search' && !arg) {
     const ign = query.get('ign')?.trim();
@@ -125,7 +158,7 @@ function handle(req, res) {
     const p = player(site.guild_id, arg);
     return p ? html(res, 200, playerPage(site, p, gamemodesOf(site.guild_id))) : html(res, 404, errorPage(404, `No player named ${arg} here.`, site));
   }
-  if (kind === 'results' && !arg) return html(res, 200, resultsPage(site, results(site.guild_id)));
+  if (kind === 'results' && !arg) return html(res, 200, resultsPage(site, results(site.guild_id), gamemodesOf(site.guild_id)));
   if (kind === 'results' && /^\d+$/.test(arg)) {
     const r = result(site.guild_id, Number(arg));
     return r ? html(res, 200, resultPage(site, r)) : html(res, 404, errorPage(404, 'Result not found.', site));

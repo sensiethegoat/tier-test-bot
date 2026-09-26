@@ -126,6 +126,29 @@ CREATE TABLE IF NOT EXISTS restrictions (
 );
 `);
 
+// Past seasons: a snapshot of every tier when the season ended.
+db.exec(`
+CREATE TABLE IF NOT EXISTS seasons (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  guild_id   TEXT NOT NULL,
+  name       TEXT NOT NULL,
+  started_at INTEGER,
+  ended_at   INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS season_ranks (
+  season_id INTEGER NOT NULL,
+  guild_id  TEXT NOT NULL,
+  user_id   TEXT NOT NULL,
+  ign       TEXT,
+  gamemode  TEXT NOT NULL,
+  tier      TEXT NOT NULL,
+  peak_tier TEXT NOT NULL,
+  PRIMARY KEY (season_id, user_id, gamemode)
+);
+CREATE INDEX IF NOT EXISTS season_ranks_guild ON season_ranks (guild_id, season_id);
+`);
+
 // High test requests wait in the high-test channel until a high tester accepts or denies them.
 db.exec(`
 CREATE TABLE IF NOT EXISTS high_requests (
@@ -157,4 +180,22 @@ if (!hasColumn('guild_config', 'high_tester_role_id')) {
 }
 if (!hasColumn('tickets', 'high')) db.exec('ALTER TABLE tickets ADD COLUMN high INTEGER NOT NULL DEFAULT 0');
 if (!hasColumn('tests', 'high')) db.exec('ALTER TABLE tests ADD COLUMN high INTEGER NOT NULL DEFAULT 0');
+if (!hasColumn('guild_config', 'tier_set')) db.exec('ALTER TABLE guild_config ADD COLUMN tier_set INTEGER NOT NULL DEFAULT 10');
+if (!hasColumn('players', 'retired')) {
+  db.exec('ALTER TABLE players ADD COLUMN retired INTEGER NOT NULL DEFAULT 0');
+  db.exec('ALTER TABLE players ADD COLUMN retired_at INTEGER');
+}
+if (!hasColumn('gamemodes', 'icon')) db.exec('ALTER TABLE gamemodes ADD COLUMN icon TEXT');
+if (!hasColumn('tests', 'season_id')) db.exec('ALTER TABLE tests ADD COLUMN season_id INTEGER');
+
+// The Oceania region used to be called AU; MCPVP-style lists call it OC.
+const done = db.prepare("SELECT 1 FROM bot_meta WHERE key = 'region_au_to_oc'").get();
+if (!done) {
+  const tables = ['players', 'queues', 'queue_entries', 'waitlist', 'tickets', 'tests'];
+  db.transaction(() => {
+    for (const table of tables) db.prepare(`UPDATE ${table} SET region = 'OC' WHERE region = 'AU'`).run();
+    db.prepare("INSERT INTO bot_meta (key, value) VALUES ('region_au_to_oc', '1')").run();
+  })();
+}
+
 if (!hasColumn('players', 'cracked')) db.exec('ALTER TABLE players ADD COLUMN cracked INTEGER NOT NULL DEFAULT 0');

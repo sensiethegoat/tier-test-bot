@@ -1,7 +1,17 @@
 import { EmbedBuilder, InteractionContextType, SlashCommandBuilder } from 'discord.js';
-import { DAY, POINTS, tierIndex, titleFor } from '../constants.js';
+import { DAY, overallTier, pointsFor, tierIndex, titleFor } from '../constants.js';
 import { all, one } from '../../../db.js';
-import { avatarUrl, cooldownEnds, displayName, gamemodeOption, gamemodes, getConfig, getPlayer, resolveGamemode } from '../util.js';
+import {
+  avatarUrl,
+  cooldownEnds,
+  displayName,
+  gamemodeOption,
+  gamemodes,
+  getConfig,
+  getPlayer,
+  positionIn,
+  resolveGamemode,
+} from '../util.js';
 import { COLORS, UserError, ts } from '../../../util.js';
 
 const profile = new SlashCommandBuilder()
@@ -18,7 +28,7 @@ async function executeProfile(interaction) {
   const ranks = all('SELECT * FROM ranks WHERE guild_id = ? AND user_id = ?', guildId, target.id);
   if (!player && !ranks.length) throw new UserError(`${target} has not verified or been tested on this server.`);
 
-  const points = ranks.reduce((sum, r) => sum + POINTS[r.peak_tier], 0);
+  const points = ranks.reduce((sum, r) => sum + pointsFor(cfg, r.peak_tier), 0);
   const tests = one('SELECT COUNT(*) AS n FROM tests WHERE guild_id = ? AND user_id = ?', guildId, target.id).n;
   const modes = [...new Set([...gamemodes(guildId), ...ranks.map((r) => r.gamemode)])];
 
@@ -27,14 +37,18 @@ async function executeProfile(interaction) {
     .setTitle(player?.ign ?? target.username)
     .setThumbnail(player ? avatarUrl(player) : target.displayAvatarURL())
     .setDescription(
-      `**${titleFor(points)}** · ${points} points\n` +
-        `Account: **${player ? (player.cracked ? 'Cracked' : 'Premium') : '—'}** · Region: **${player?.region ?? '—'}** · Tests taken: **${tests}** · <@${target.id}>`,
+      `**${overallTier(cfg, points)}** · ${points} points · ${titleFor(points)}\n` +
+        `Account: **${player ? (player.cracked ? 'Cracked' : 'Premium') : '—'}** · Region: **${player?.region ?? '—'}** · Tests taken: **${tests}** · <@${target.id}>` +
+        (player?.retired ? '\n🏁 **Retired** — not shown in the rankings.' : ''),
     );
 
   for (const gm of modes.slice(0, 24)) {
     const r = ranks.find((x) => x.gamemode === gm);
     const cd = cooldownEnds(guildId, target.id, gm, cfg);
-    const lines = [r ? `**${r.tier}**${r.peak_tier !== r.tier ? ` (peak ${r.peak_tier})` : ''}` : 'Unranked'];
+    const pos = r && !player?.retired ? positionIn(guildId, gm, target.id) : null;
+    const lines = [
+      r ? `**${r.tier}**${pos ? ` · #${pos}` : ''}${r.peak_tier !== r.tier ? `\nPeak ${r.peak_tier}` : ''}` : 'Unranked',
+    ];
     if (cd) lines.push(`Retest ${ts(cd)}`);
     embed.addFields({ name: gm, value: lines.join('\n'), inline: true });
   }
@@ -45,13 +59,19 @@ const leaderboard = new SlashCommandBuilder()
   .setName('leaderboard')
   .setDescription('Top players on this server')
   .setContexts(InteractionContextType.Guild)
-  .addStringOption((o) => gamemodeOption(o, false).setDescription('Gamemode (omit for overall points)'));
+  .addStringOption((o) => gamemodeOption(o, false).setDescription('Gamemode (omit for overall points)'))
+  .addBooleanOption((o) => o.setName('include_retired').setDescription('Also show retired players'));
 
 async function executeLeaderboard(interaction) {
   const { guildId } = interaction;
   const input = interaction.options.getString('gamemode');
-  const rows = all('SELECT r.*, p.ign, p.cracked FROM ranks r LEFT JOIN players p USING (guild_id, user_id) WHERE r.guild_id = ?', guildId);
-  const name = (r) => (r.ign ? displayName(r) : `<@${r.user_id}>`);
+  const cfg = getConfig(guildId);
+  const includeRetired = interaction.options.getBoolean('include_retired') ?? false;
+  const rows = all(
+    'SELECT r.*, p.ign, p.cracked, p.retired FROM ranks r LEFT JOIN players p USING (guild_id, user_id) WHERE r.guild_id = ?',
+    guildId,
+  ).filter((r) => includeRetired || !r.retired);
+  const name = (r) => `${r.ign ? displayName(r) : `<@${r.user_id}>`}${r.retired ? ' 🏁' : ''}`;
   let title, lines;
 
   if (input) {
@@ -61,23 +81,29 @@ async function executeLeaderboard(interaction) {
       .filter((r) => r.gamemode === gm)
       .sort((a, b) => tierIndex(a.tier) - tierIndex(b.tier) || (a.last_tested_at ?? 0) - (b.last_tested_at ?? 0))
       .slice(0, 20)
-      .map((r, i) => `**${i + 1}.** ${name(r)} — ${r.tier}`);
+      .map((r, i) => `**${i + 1}.** ${name(r)} — ${r.tier}${r.peak_tier !== r.tier ? ` *(peak ${r.peak_tier})*` : ''}`);
   } else {
     title = 'Overall Leaderboard';
     const totals = new Map();
     for (const r of rows) {
       const t = totals.get(r.user_id) ?? { ...r, points: 0 };
-      t.points += POINTS[r.peak_tier];
+      t.points += pointsFor(cfg, r.peak_tier);
       totals.set(r.user_id, t);
     }
     lines = [...totals.values()]
       .sort((a, b) => b.points - a.points)
       .slice(0, 20)
-      .map((r, i) => `**${i + 1}.** ${name(r)} — ${r.points} pts · ${titleFor(r.points)}`);
+      .map((r, i) => `**${i + 1}.** ${name(r)} — **${overallTier(cfg, r.points)}** · ${r.points} pts · ${titleFor(r.points)}`);
   }
 
   await interaction.reply({
-    embeds: [new EmbedBuilder().setColor(COLORS.gold).setTitle(title).setDescription(lines.join('\n') || 'Nobody has been tested yet.')],
+    embeds: [
+      new EmbedBuilder()
+        .setColor(COLORS.gold)
+        .setTitle(title)
+        .setDescription(lines.join('\n') || 'Nobody has been tested yet.')
+        .setFooter({ text: includeRetired ? 'Retired players marked 🏁' : 'Retired players hidden · include_retired:True shows them' }),
+    ],
     allowedMentions: { parse: [] },
   });
 }
