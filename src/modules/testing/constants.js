@@ -1,16 +1,16 @@
-// Canonical order, best → worst. Servers using the 10-tier set simply never use the MT tiers,
-// so this one list orders and compares tiers for every server.
+// Canonical order, best → worst. MVT only uses the HT/LT system.
+// This keeps tier comparison consistent while removing the MT tiers entirely.
 export const ALL_TIERS = [
-  'HT1', 'MT1', 'LT1',
-  'HT2', 'MT2', 'LT2',
-  'HT3', 'MT3', 'LT3',
-  'HT4', 'MT4', 'LT4',
-  'HT5', 'MT5', 'LT5',
+  'HT1', 'LT1',
+  'HT2', 'LT2',
+  'HT3', 'LT3',
+  'HT4', 'LT4',
+  'HT5', 'LT5',
 ];
 
-/** 10 = MCTiers style (HT/LT), 15 = MCPVP style (HT/MT/LT). Chosen per server. */
+/** 10 = MCTiers style (HT/LT). 15 is kept as a compatibility alias for older configs, but without MT tiers. */
 export const TIER_SETS = {
-  10: ALL_TIERS.filter((t) => !t.startsWith('MT')),
+  10: ALL_TIERS,
   15: ALL_TIERS,
 };
 
@@ -78,31 +78,28 @@ export function isMvtGamemode(gamemode) {
   return MVT_GAMEMODE_NAMES.some((name) => name.toLowerCase() === String(gamemode).toLowerCase());
 }
 
-/** 10 = MCTiers style (HT/LT), 15 = MCPVP style (HT/MT/LT). Chosen per server. */
-// Points a gamemode contributes, counted from its peak tier. The 10-tier numbers are MCTiers';
-// the 15-tier scale keeps the same shape with the mid tiers in between.
+/** 10 = MCTiers style (HT/LT), 15 = compatibility alias without MT tiers. */
 const POINTS = {
   10: { HT1: 60, LT1: 45, HT2: 30, LT2: 20, HT3: 10, LT3: 6, HT4: 4, LT4: 3, HT5: 2, LT5: 1 },
-  15: {
-    HT1: 60, MT1: 52, LT1: 45,
-    HT2: 30, MT2: 25, LT2: 20,
-    HT3: 12, MT3: 9, LT3: 8,
-    HT4: 6, MT4: 5, LT4: 4,
-    HT5: 3, MT5: 2, LT5: 1,
-  },
+  15: { HT1: 60, LT1: 45, HT2: 30, LT2: 20, HT3: 10, LT3: 6, HT4: 4, LT4: 3, HT5: 2, LT5: 1 },
 };
 
-// Total points → overall tier badge, like MCPVP's "LT1 · 330 Points".
 const OVERALL = {
+  10: [
+    ['HT1', 60], ['LT1', 45],
+    ['HT2', 30], ['LT2', 20],
+    ['HT3', 10], ['LT3', 6],
+    ['HT4', 4], ['LT4', 3],
+    ['HT5', 2], ['LT5', 1],
+  ],
   15: [
-    ['HT1', 400], ['MT1', 350], ['LT1', 300],
-    ['HT2', 250], ['MT2', 200], ['LT2', 150],
-    ['HT3', 125], ['MT3', 100], ['LT3', 75],
-    ['HT4', 50], ['MT4', 30], ['LT4', 15],
-    ['HT5', 5], ['MT5', 1], ['LT5', 0],
+    ['HT1', 60], ['LT1', 45],
+    ['HT2', 30], ['LT2', 20],
+    ['HT3', 10], ['LT3', 6],
+    ['HT4', 4], ['LT4', 3],
+    ['HT5', 2], ['LT5', 1],
   ],
 };
-OVERALL[10] = OVERALL[15].filter(([tier]) => !tier.startsWith('MT'));
 
 export const TITLES = [
   [400, 'Combat Grandmaster'],
@@ -155,6 +152,9 @@ export const tiersOf = (cfg) => TIER_SETS[setOf(cfg)];
 export const pointsFor = (cfg, tier) => POINTS[setOf(cfg)][tier] ?? POINTS[15][tier] ?? 0;
 
 /** The overall tier badge for a points total. */
-export const overallTier = (cfg, points) => OVERALL[setOf(cfg)].find(([, min]) => points >= min)[0];
+export const overallTier = (cfg, points) => {
+  const list = OVERALL[setOf(cfg)];
+  return list.find(([, min]) => points >= min)?.[0] ?? 'LT5';
+};
 
-export const titleFor = (points) => TITLES.find(([min]) => points >= min)[1];
+export const titleFor = (points) => TITLES.find(([min]) => points >= min)?.[1] ?? 'Rookie';
