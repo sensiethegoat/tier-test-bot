@@ -14,6 +14,73 @@ import {
 } from '../util.js';
 import { COLORS, UserError, ts } from '../../../util.js';
 
+const MVT_CATEGORIES = [
+  {
+    name: 'Vanilla',
+    kits: [
+      'Diamond Sword',
+      'Netherite Sword',
+      'Diamond Potion',
+      'Netherite Potion',
+      'Axe',
+      'No Axe',
+      'UHC',
+      'Shieldless UHC',
+      'ElytraMace',
+      'SpearMace',
+      'ElytraSpear',
+      'Diamond SMP',
+      'Netherite SMP',
+      'Mace SMP',
+      'Crystal PvP',
+    ],
+  },
+  {
+    name: 'Modded KB',
+    kits: [
+      'BedFight',
+      'Boxing',
+      'Bridge',
+      'Build UHC',
+      'FireballFight',
+      'MidFight',
+      'NoDebuff',
+      'SkyWars',
+      'Sumo',
+      'Survival Games',
+      'Battlerush',
+    ],
+  },
+  {
+    name: 'MCBE-J',
+    kits: [
+      'Sword',
+      'Axe',
+      'UHC',
+      'Mace',
+      'SMP',
+      'Pot',
+      'Netherite OP',
+      'Crystal PvP',
+      'Diamond SMP',
+      'SpearMace',
+      'Cart',
+      'Shieldless UHC',
+    ],
+  },
+];
+
+function findMvtRank(ranks, categoryName, kitName) {
+  const variants = new Set([
+    kitName,
+    `${categoryName} - ${kitName}`,
+    `${categoryName}:${kitName}`,
+    `${categoryName}/${kitName}`,
+  ]);
+
+  return ranks.find((rank) => variants.has(String(rank.gamemode ?? '')));
+}
+
 const profile = new SlashCommandBuilder()
   .setName('profile')
   .setDescription('Show a player\'s tiers on this server')
@@ -30,9 +97,8 @@ async function executeProfile(interaction) {
 
   const points = ranks.reduce((sum, r) => sum + pointsFor(cfg, r.peak_tier), 0);
   const tests = one('SELECT COUNT(*) AS n FROM tests WHERE guild_id = ? AND user_id = ?', guildId, target.id).n;
-  const modes = [...new Set([...gamemodes(guildId), ...ranks.map((r) => r.gamemode)])];
 
-  const embed = new EmbedBuilder()
+  const summaryEmbed = new EmbedBuilder()
     .setColor(COLORS.primary)
     .setTitle(player?.ign ?? target.username)
     .setThumbnail(player ? avatarUrl(player) : target.displayAvatarURL())
@@ -42,17 +108,19 @@ async function executeProfile(interaction) {
         (player?.retired ? '\n🏁 **Retired** — not shown in the rankings.' : ''),
     );
 
-  for (const gm of modes.slice(0, 24)) {
-    const r = ranks.find((x) => x.gamemode === gm);
-    const cd = cooldownEnds(guildId, target.id, gm, cfg);
-    const pos = r && !player?.retired ? positionIn(guildId, gm, target.id) : null;
-    const lines = [
-      r ? `**${r.tier}**${pos ? ` · #${pos}` : ''}${r.peak_tier !== r.tier ? `\nPeak ${r.peak_tier}` : ''}` : 'Unranked',
-    ];
-    if (cd) lines.push(`Retest ${ts(cd)}`);
-    embed.addFields({ name: gm, value: lines.join('\n'), inline: true });
-  }
-  await interaction.reply({ embeds: [embed], allowedMentions: { parse: [] } });
+  const categoryEmbeds = MVT_CATEGORIES.map((category) => {
+    const lines = category.kits.map((kit) => {
+      const rank = findMvtRank(ranks, category.name, kit);
+      return `**${kit}**: ${rank ? rank.tier : 'Unranked'}`;
+    });
+
+    return new EmbedBuilder()
+      .setColor(COLORS.primary)
+      .setTitle(`${player?.ign ?? target.username} · ${category.name}`)
+      .setDescription(lines.join('\n'));
+  });
+
+  await interaction.reply({ embeds: [summaryEmbed, ...categoryEmbeds], allowedMentions: { parse: [] } });
 }
 
 const leaderboard = new SlashCommandBuilder()
