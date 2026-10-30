@@ -14,6 +14,71 @@ export const TIER_SETS = {
   15: ALL_TIERS,
 };
 
+export const MVT_CATEGORIES = [
+  {
+    name: 'Vanilla',
+    kits: [
+      'Diamond Sword',
+      'Netherite Sword',
+      'Diamond Potion',
+      'Netherite Potion',
+      'Axe',
+      'No Axe',
+      'UHC',
+      'Shieldless UHC',
+      'ElytraMace',
+      'SpearMace',
+      'ElytraSpear',
+      'Diamond SMP',
+      'Netherite SMP',
+      'Mace SMP',
+      'Crystal PvP',
+    ],
+  },
+  {
+    name: 'Modded KB',
+    kits: [
+      'BedFight',
+      'Boxing',
+      'Bridge',
+      'Build UHC',
+      'FireballFight',
+      'MidFight',
+      'NoDebuff',
+      'SkyWars',
+      'Sumo',
+      'Survival Games',
+      'Battlerush',
+    ],
+  },
+  {
+    name: 'MCBE-J',
+    kits: [
+      'Sword',
+      'Axe',
+      'UHC',
+      'Mace',
+      'SMP',
+      'Pot',
+      'Netherite OP',
+      'Crystal PvP',
+      'Diamond SMP',
+      'SpearMace',
+      'Cart',
+      'Shieldless UHC',
+    ],
+  },
+];
+
+export const MVT_GAMEMODE_NAMES = MVT_CATEGORIES.flatMap(({ name, kits }) =>
+  kits.map((kit) => `${name} - ${kit}`),
+);
+
+export function isMvtGamemode(gamemode) {
+  return MVT_GAMEMODE_NAMES.some((name) => name.toLowerCase() === String(gamemode).toLowerCase());
+}
+
+/** 10 = MCTiers style (HT/LT), 15 = MCPVP style (HT/MT/LT). Chosen per server. */
 // Points a gamemode contributes, counted from its peak tier. The 10-tier numbers are MCTiers';
 // the 15-tier scale keeps the same shape with the mid tiers in between.
 const POINTS = {
